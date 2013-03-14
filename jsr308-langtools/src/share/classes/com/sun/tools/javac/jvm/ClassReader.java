@@ -134,6 +134,11 @@ public class ClassReader implements Completer {
      **/
     public boolean preferSource;
 
+    /**
+     * The currently selected profile.
+     */
+    public final Profile profile;
+
     /** The log to use for verbose output
      */
     final Log log;
@@ -288,15 +293,19 @@ public class ClassReader implements Completer {
         annotate = Annotate.instance(context);
         verbose        = options.isSet(VERBOSE);
         checkClassFile = options.isSet("-checkclassfile");
+
         Source source = Source.instance(context);
         allowGenerics    = source.allowGenerics();
         allowVarargs     = source.allowVarargs();
         allowAnnotations = source.allowAnnotations();
         allowSimplifiedVarargs = source.allowSimplifiedVarargs();
         allowDefaultMethods = source.allowDefaultMethods();
+
         saveParameterNames = options.isSet("save-parameter-names");
         cacheCompletionFailure = options.isUnset("dev");
         preferSource = "source".equals(options.get("-Xprefer"));
+
+        profile = Profile.instance(context);
 
         completionFailureName =
             options.isSet("failcomplete")
@@ -314,7 +323,9 @@ public class ClassReader implements Completer {
     /** Add member to class unless it is synthetic.
      */
     private void enterMember(ClassSymbol c, Symbol sym) {
-        if ((sym.flags_field & (SYNTHETIC|BRIDGE)) != SYNTHETIC)
+        // Synthetic members are not entered -- reason lost to history (optimization?).
+        // Lambda methods must be entered because they may have inner classes (which reference them)
+        if ((sym.flags_field & (SYNTHETIC|BRIDGE)) != SYNTHETIC || sym.name.startsWith(names.lambda))
             c.members_field.enter(sym);
     }
 
@@ -1039,7 +1050,7 @@ public class ClassReader implements Completer {
                         haveParameterNameIndices = true;
                         for (int i = 0; i < numEntries; i++) {
                             int nameIndex = nextChar();
-                            int flags = nextInt();
+                            int flags = nextChar();
                             parameterNameIndices[i] = nameIndex;
                         }
                     }
@@ -1376,7 +1387,18 @@ public class ClassReader implements Completer {
                 CompoundAnnotationProxy proxy = readCompoundAnnotation();
                 if (proxy.type.tsym == syms.proprietaryType.tsym)
                     sym.flags_field |= PROPRIETARY;
-                else
+                else if (proxy.type.tsym == syms.profileType.tsym) {
+                    if (profile != Profile.DEFAULT) {
+                        for (Pair<Name,Attribute> v: proxy.values) {
+                            if (v.fst == names.value && v.snd instanceof Attribute.Constant) {
+                                Attribute.Constant c = (Attribute.Constant) v.snd;
+                                if (c.type == syms.intType && ((Integer) c.value) > profile.value) {
+                                    sym.flags_field |= NOT_IN_PROFILE;
+                                }
+                            }
+                        }
+                    }
+                } else
                     proxies.append(proxy);
             }
             annotate.normal(new AnnotationCompleter(sym, proxies.toList()));
@@ -1485,8 +1507,8 @@ public class ClassReader implements Completer {
         // new expression
         case NEW:
         // constructor/method reference receiver
-        case CONSTRUCTOR_REFERENCE_RECEIVER:
-        case METHOD_REFERENCE_RECEIVER:
+        case CONSTRUCTOR_REFERENCE:
+        case METHOD_REFERENCE:
             position.offset = nextChar();
             break;
         // local variable

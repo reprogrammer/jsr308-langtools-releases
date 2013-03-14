@@ -126,7 +126,8 @@ public class TypeAnnotationPosition {
     // Tree position.
     public int pos = -1;
 
-    // For typecasts, type tests, new (and locals, as start_pc).
+    // For type casts, type tests, new, locals (as start_pc),
+    // and method and constructor reference type arguments.
     public boolean isValidOffset = false;
     public int offset = -1;
 
@@ -161,8 +162,8 @@ public class TypeAnnotationPosition {
         // new expression
         case NEW:
         // constructor/method reference receiver
-        case CONSTRUCTOR_REFERENCE_RECEIVER:
-        case METHOD_REFERENCE_RECEIVER:
+        case CONSTRUCTOR_REFERENCE:
+        case METHOD_REFERENCE:
             sb.append(", offset = ");
             sb.append(offset);
             break;

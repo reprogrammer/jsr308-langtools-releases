@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -112,6 +112,12 @@ public class HtmlConstants {
             new Comment("=========== FIELD SUMMARY ===========");
 
     /**
+     * Marker to identify start of properties summary.
+     */
+    public static final Content START_OF_PROPERTY_SUMMARY =
+            new Comment("=========== PROPERTY SUMMARY ===========");
+
+    /**
      * Marker to identify start of method summary.
      */
     public static final Content START_OF_METHOD_SUMMARY =
@@ -134,6 +140,12 @@ public class HtmlConstants {
      */
     public static final Content START_OF_FIELD_DETAILS =
             new Comment("============ FIELD DETAIL ===========");
+
+    /**
+     * Marker to identify start of property details.
+     */
+    public static final Content START_OF_PROPERTY_DETAILS =
+            new Comment("============ PROPERTY DETAIL ===========");
 
     /**
      * Marker to identify start of constructor details.
@@ -166,6 +178,11 @@ public class HtmlConstants {
      * Html tag for the package name heading.
      */
     public static final HtmlTag PACKAGE_HEADING = HtmlTag.H2;
+
+    /**
+     * Html tag for the profile name heading.
+     */
+    public static final HtmlTag PROFILE_HEADING = HtmlTag.H2;
 
     /**
      * Html tag for the member summary heading.

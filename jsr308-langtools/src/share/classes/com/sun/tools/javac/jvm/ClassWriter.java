@@ -39,6 +39,9 @@ import javax.tools.JavaFileObject;
 import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.code.Attribute.RetentionPolicy;
 import com.sun.tools.javac.code.Attribute.TypeCompound;
+import static com.sun.tools.javac.code.BoundKind.EXTENDS;
+import static com.sun.tools.javac.code.BoundKind.SUPER;
+import static com.sun.tools.javac.code.BoundKind.UNBOUND;
 import com.sun.tools.javac.code.Symbol.*;
 import com.sun.tools.javac.code.Type.*;
 import com.sun.tools.javac.code.Types.UniqueType;
@@ -130,10 +133,6 @@ public class ClassWriter extends ClassFile {
      */
     ByteBuffer poolbuf = new ByteBuffer(POOL_BUF_SIZE);
 
-    /** An output buffer for type signatures.
-     */
-    ByteBuffer sigbuf = new ByteBuffer();
-
     /** The constant pool.
      */
     Pool pool;
@@ -162,6 +161,9 @@ public class ClassWriter extends ClassFile {
     /** Access to files. */
     private final JavaFileManager fileManager;
 
+    /** Sole signature generator */
+    private final CWSignatureGenerator signatureGen;
+
     /** The tags and constants used in compressed stackmap. */
     static final int SAME_FRAME_SIZE = 64;
     static final int SAME_LOCALS_1_STACK_ITEM_EXTENDED = 247;
@@ -189,6 +191,7 @@ public class ClassWriter extends ClassFile {
         source = Source.instance(context);
         types = Types.instance(context);
         fileManager = context.get(JavaFileManager.class);
+        signatureGen = new CWSignatureGenerator(types);
 
         debugJSR308    = options.isSet("TA:writer");
         verbose        = options.isSet(VERBOSE);
@@ -275,172 +278,81 @@ public class ClassWriter extends ClassFile {
         buf.elems[adr+3] = (byte)((x      ) & 0xFF);
     }
 
-/******************************************************************
- * Signature Generation
- ******************************************************************/
-
-    /** Assemble signature of given type in string buffer.
+    /**
+     * Signature Generation
      */
-    void assembleSig(Type type) {
-        type = type.unannotatedType();
-        switch (type.getTag()) {
-        case BYTE:
-            sigbuf.appendByte('B');
-            break;
-        case SHORT:
-            sigbuf.appendByte('S');
-            break;
-        case CHAR:
-            sigbuf.appendByte('C');
-            break;
-        case INT:
-            sigbuf.appendByte('I');
-            break;
-        case LONG:
-            sigbuf.appendByte('J');
-            break;
-        case FLOAT:
-            sigbuf.appendByte('F');
-            break;
-        case DOUBLE:
-            sigbuf.appendByte('D');
-            break;
-        case BOOLEAN:
-            sigbuf.appendByte('Z');
-            break;
-        case VOID:
-            sigbuf.appendByte('V');
-            break;
-        case CLASS:
-            sigbuf.appendByte('L');
-            assembleClassSig(type);
-            sigbuf.appendByte(';');
-            break;
-        case ARRAY:
-            ArrayType at = (ArrayType)type;
-            sigbuf.appendByte('[');
-            assembleSig(at.elemtype);
-            break;
-        case METHOD:
-            MethodType mt = (MethodType)type;
-            sigbuf.appendByte('(');
-            assembleSig(mt.argtypes);
-            sigbuf.appendByte(')');
-            assembleSig(mt.restype);
-            if (hasTypeVar(mt.thrown)) {
-                for (List<Type> l = mt.thrown; l.nonEmpty(); l = l.tail) {
-                    sigbuf.appendByte('^');
-                    assembleSig(l.head);
-                }
-            }
-            break;
-        case WILDCARD: {
-            WildcardType ta = (WildcardType) type;
-            switch (ta.kind) {
-            case SUPER:
-                sigbuf.appendByte('-');
-                assembleSig(ta.type);
-                break;
-            case EXTENDS:
-                sigbuf.appendByte('+');
-                assembleSig(ta.type);
-                break;
-            case UNBOUND:
-                sigbuf.appendByte('*');
-                break;
-            default:
-                throw new AssertionError(ta.kind);
-            }
-            break;
-        }
-        case TYPEVAR:
-            sigbuf.appendByte('T');
-            sigbuf.appendName(type.tsym.name);
-            sigbuf.appendByte(';');
-            break;
-        case FORALL:
-            ForAll ft = (ForAll)type;
-            assembleParamsSig(ft.tvars);
-            assembleSig(ft.qtype);
-            break;
-        case UNINITIALIZED_THIS:
-        case UNINITIALIZED_OBJECT:
-            // we don't yet have a spec for uninitialized types in the
-            // local variable table
-            assembleSig(types.erasure(((UninitializedType)type).qtype));
-            break;
-        default:
-            throw new AssertionError("typeSig " + type.getTag());
-        }
-    }
+    private class CWSignatureGenerator extends Types.SignatureGenerator {
 
-    boolean hasTypeVar(List<Type> l) {
-        while (l.nonEmpty()) {
-            if (l.head.hasTag(TYPEVAR)) return true;
-            l = l.tail;
+        /**
+         * An output buffer for type signatures.
+         */
+        ByteBuffer sigbuf = new ByteBuffer();
+
+        CWSignatureGenerator(Types types) {
+            super(types);
         }
-        return false;
-    }
 
-    void assembleClassSig(Type type) {
-        type = type.unannotatedType();
-        ClassType ct = (ClassType)type;
-        ClassSymbol c = (ClassSymbol)ct.tsym;
-        enterInner(c);
-        Type outer = ct.getEnclosingType();
-        if (outer.allparams().nonEmpty()) {
-            boolean rawOuter =
-                c.owner.kind == MTH || // either a local class
-                c.name == names.empty; // or anonymous
-            assembleClassSig(rawOuter
-                             ? types.erasure(outer)
-                             : outer);
-            sigbuf.appendByte('.');
-            Assert.check(c.flatname.startsWith(c.owner.enclClass().flatname));
-            sigbuf.appendName(rawOuter
-                              ? c.flatname.subName(c.owner.enclClass().flatname.getByteLength()+1,c.flatname.getByteLength())
-                              : c.name);
-        } else {
-            sigbuf.appendBytes(externalize(c.flatname));
-        }
-        if (ct.getTypeArguments().nonEmpty()) {
-            sigbuf.appendByte('<');
-            assembleSig(ct.getTypeArguments());
-            sigbuf.appendByte('>');
-        }
-    }
-
-
-    void assembleSig(List<Type> types) {
-        for (List<Type> ts = types; ts.nonEmpty(); ts = ts.tail)
-            assembleSig(ts.head);
-    }
-
-    void assembleParamsSig(List<Type> typarams) {
-        sigbuf.appendByte('<');
-        for (List<Type> ts = typarams; ts.nonEmpty(); ts = ts.tail) {
-            TypeVar tvar = (TypeVar)ts.head;
-            sigbuf.appendName(tvar.tsym.name);
-            List<Type> bounds = types.getBounds(tvar);
-            if ((bounds.head.tsym.flags() & INTERFACE) != 0) {
-                sigbuf.appendByte(':');
-            }
-            for (List<Type> l = bounds; l.nonEmpty(); l = l.tail) {
-                sigbuf.appendByte(':');
-                assembleSig(l.head);
+        /**
+         * Assemble signature of given type in string buffer.
+         * Check for uninitialized types before calling the general case.
+         */
+        @Override
+        public void assembleSig(Type type) {
+            type = type.unannotatedType();
+            switch (type.getTag()) {
+                case UNINITIALIZED_THIS:
+                case UNINITIALIZED_OBJECT:
+                    // we don't yet have a spec for uninitialized types in the
+                    // local variable table
+                    assembleSig(types.erasure(((UninitializedType)type).qtype));
+                    break;
+                default:
+                    super.assembleSig(type);
             }
         }
-        sigbuf.appendByte('>');
+
+        @Override
+        protected void append(char ch) {
+            sigbuf.appendByte(ch);
+        }
+
+        @Override
+        protected void append(byte[] ba) {
+            sigbuf.appendBytes(ba);
+        }
+
+        @Override
+        protected void append(Name name) {
+            sigbuf.appendName(name);
+        }
+
+        @Override
+        protected void classReference(ClassSymbol c) {
+            enterInner(c);
+        }
+
+        private void reset() {
+            sigbuf.reset();
+        }
+
+        private Name toName() {
+            return sigbuf.toName(names);
+        }
+
+        private boolean isEmpty() {
+            return sigbuf.length == 0;
+        }
     }
 
-    /** Return signature of given type
+    /**
+     * Return signature of given type
      */
     Name typeSig(Type type) {
-        Assert.check(sigbuf.length == 0);
+        Assert.check(signatureGen.isEmpty());
         //- System.out.println(" ? " + type);
-        assembleSig(type);
-        Name n = sigbuf.toName(names);
-        sigbuf.reset();
+        signatureGen.assembleSig(type);
+        Name n = signatureGen.toName();
+        signatureGen.reset();
         //- System.out.println("   " + n);
         return n;
     }
@@ -487,10 +399,8 @@ public class ClassWriter extends ClassFile {
         while (i < pool.pp) {
             Object value = pool.pool[i];
             Assert.checkNonNull(value);
-            if (value instanceof Method)
-                value = ((Method)value).m;
-            else if (value instanceof Variable)
-                value = ((Variable)value).v;
+            if (value instanceof Method || value instanceof Variable)
+                value = ((DelegatedSymbol)value).getUnderlyingSymbol();
 
             if (value instanceof MethodSymbol) {
                 MethodSymbol m = (MethodSymbol)value;
@@ -718,7 +628,7 @@ public class ClassWriter extends ClassFile {
             (flags & (SYNTHETIC|BRIDGE)) != SYNTHETIC &&
             (flags & ANONCONSTR) == 0 &&
             (!types.isSameType(sym.type, sym.erasure(types)) ||
-             hasTypeVar(sym.type.getThrownTypes()))) {
+            signatureGen.hasTypeVar(sym.type.getThrownTypes()))) {
             // note that a local class with captured variables
             // will get a signature attribute
             int alenIdx = writeAttr(names.Signature);
@@ -727,7 +637,7 @@ public class ClassWriter extends ClassFile {
             acount++;
         }
         acount += writeJavaAnnotations(sym.getRawAttributes());
-        acount += writeTypeAnnotations(sym.getRawTypeAttributes());
+        acount += writeTypeAnnotations(sym.getRawTypeAttributes(), false);
         return acount;
     }
 
@@ -735,16 +645,26 @@ public class ClassWriter extends ClassFile {
      * Write method parameter names attribute.
      */
     int writeMethodParametersAttr(MethodSymbol m) {
-        if (m.params != null && 0 != m.params.length()) {
-            int attrIndex = writeAttr(names.MethodParameters);
-            databuf.appendByte(m.params.length());
-            for (VarSymbol s : m.params) {
-                // TODO: expand to cover synthesized, once we figure out
-                // how to represent that.
-                final int flags = (int) s.flags() & (FINAL | SYNTHETIC);
-                // output parameter info
+        MethodType ty = m.externalType(types).asMethodType();
+        final int allparams = ty.argtypes.size();
+        if (m.params != null && allparams != 0) {
+            final int attrIndex = writeAttr(names.MethodParameters);
+            databuf.appendByte(allparams);
+            // Write extra parameters first
+            for (VarSymbol s : m.extraParams) {
+                final int flags =
+                    ((int) s.flags() & (FINAL | SYNTHETIC | MANDATED)) |
+                    ((int) m.flags() & SYNTHETIC);
                 databuf.appendChar(pool.put(s.name));
-                databuf.appendInt(flags);
+                databuf.appendChar(flags);
+            }
+            // Now write the real parameters
+            for (VarSymbol s : m.params) {
+                final int flags =
+                    ((int) s.flags() & (FINAL | SYNTHETIC | MANDATED)) |
+                    ((int) m.flags() & SYNTHETIC);
+                databuf.appendChar(pool.put(s.name));
+                databuf.appendChar(flags);
             }
             endAttr(attrIndex);
             return 1;
@@ -844,7 +764,7 @@ public class ClassWriter extends ClassFile {
         return attrCount;
     }
 
-    int writeTypeAnnotations(List<Attribute.TypeCompound> typeAnnos) {
+    int writeTypeAnnotations(List<Attribute.TypeCompound> typeAnnos, boolean inCode) {
         if (typeAnnos.isEmpty()) return 0;
 
         ListBuffer<Attribute.TypeCompound> visibles = ListBuffer.lb();
@@ -878,10 +798,13 @@ public class ClassWriter extends ClassFile {
                     // For method parameters we get the annotation twice! Once with
                     // a valid position, once unknown.
                     // TODO: find a cleaner solution.
-                    // System.err.println("ClassWriter: Position UNKNOWN in type annotation: " + tc);
+                    PrintWriter pw = log.getWriter(Log.WriterKind.ERROR);
+                    pw.println("ClassWriter: Position UNKNOWN in type annotation: " + tc);
                     continue;
                 }
             }
+            if (tc.position.type.isLocal() != inCode)
+                continue;
             if (!tc.position.emitToClassfile())
                 continue;
             switch (types.getRetention(tc)) {
@@ -1007,8 +930,8 @@ public class ClassWriter extends ClassFile {
         // new expression
         case NEW:
         // constructor/method reference receiver
-        case CONSTRUCTOR_REFERENCE_RECEIVER:
-        case METHOD_REFERENCE_RECEIVER:
+        case CONSTRUCTOR_REFERENCE:
+        case METHOD_REFERENCE:
             databuf.appendChar(p.offset);
             break;
         // local variable
@@ -1328,6 +1251,9 @@ public class ClassWriter extends ClassFile {
             endAttr(alenIdx);
             acount++;
         }
+
+        acount += writeTypeAnnotations(code.meth.getRawTypeAttributes(), true);
+
         endAttrs(acountIdx, acount);
     }
     //where
@@ -1714,7 +1640,7 @@ public class ClassWriter extends ClassFile {
             out = null;
         } finally {
             if (out != null) {
-                // if we are propogating an exception, delete the file
+                // if we are propagating an exception, delete the file
                 out.close();
                 outFile.delete();
                 outFile = null;
@@ -1730,7 +1656,7 @@ public class ClassWriter extends ClassFile {
         Assert.check((c.flags() & COMPOUND) == 0);
         databuf.reset();
         poolbuf.reset();
-        sigbuf.reset();
+        signatureGen.reset();
         pool = c.pool;
         innerClasses = null;
         innerClassesQueue = null;
@@ -1791,12 +1717,12 @@ public class ClassWriter extends ClassFile {
         if (sigReq) {
             Assert.check(source.allowGenerics());
             int alenIdx = writeAttr(names.Signature);
-            if (typarams.length() != 0) assembleParamsSig(typarams);
-            assembleSig(supertype);
+            if (typarams.length() != 0) signatureGen.assembleParamsSig(typarams);
+            signatureGen.assembleSig(supertype);
             for (List<Type> l = interfaces; l.nonEmpty(); l = l.tail)
-                assembleSig(l.head);
-            databuf.appendChar(pool.put(sigbuf.toName(names)));
-            sigbuf.reset();
+                signatureGen.assembleSig(l.head);
+            databuf.appendChar(pool.put(signatureGen.toName()));
+            signatureGen.reset();
             endAttr(alenIdx);
             acount++;
         }
@@ -1828,7 +1754,7 @@ public class ClassWriter extends ClassFile {
 
         acount += writeFlagAttrs(c.flags());
         acount += writeJavaAnnotations(c.getRawAttributes());
-        acount += writeTypeAnnotations(c.getRawTypeAttributes());
+        acount += writeTypeAnnotations(c.getRawTypeAttributes(), false);
         acount += writeEnclosingMethodAttribute(c);
         acount += writeExtraClassAttributes(c);
 

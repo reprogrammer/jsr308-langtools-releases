@@ -31,7 +31,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
-import javax.lang.model.type.TypeKind;
 import javax.tools.JavaFileObject;
 
 import com.sun.tools.javac.code.*;
@@ -465,7 +464,8 @@ public class MemberEnter extends JCTree.Visitor implements Completer {
                       names.valueOf,
                       make.Type(tree.sym.type),
                       List.<JCTypeParameter>nil(),
-                      List.of(make.VarDef(make.Modifiers(Flags.PARAMETER),
+                      List.of(make.VarDef(make.Modifiers(Flags.PARAMETER |
+                                                         Flags.MANDATED),
                                             names.fromString("name"),
                                             make.Type(syms.stringType), null)),
                       List.<JCExpression>nil(), // thrown
@@ -1087,9 +1087,12 @@ public class MemberEnter extends JCTree.Visitor implements Completer {
                 isFirst = true;
             }
         }
-        annotate.afterRepeated(TypeAnnotations.organizeTypeAnnotationsSignatures(syms, names, log, tree));
+        TypeAnnotations.organizeTypeAnnotationsSignatures(syms, names, log, tree, annotate);
     }
 
+    /*
+     * If the symbol is non-null, attach the type annotation to it.
+     */
     private void actualEnterTypeAnnotations(final List<JCAnnotation> annotations,
             final Env<AttrContext> env,
             final Symbol s) {
@@ -1122,8 +1125,10 @@ public class MemberEnter extends JCTree.Visitor implements Completer {
             }
         }
 
-        s.annotations.appendTypeAttributesWithCompletion(
-                annotate.new AnnotateRepeatedContext<Attribute.TypeCompound>(env, annotated, pos, log, true));
+        if (s != null) {
+            s.annotations.appendTypeAttributesWithCompletion(
+                    annotate.new AnnotateRepeatedContext<Attribute.TypeCompound>(env, annotated, pos, log, true));
+        }
     }
 
     public void typeAnnotate(final JCTree tree, final Env<AttrContext> env, final Symbol sym) {
@@ -1196,6 +1201,33 @@ public class MemberEnter extends JCTree.Visitor implements Completer {
             scan(tree.defaultValue);
             // Do not annotate the body, just the signature.
             // scan(tree.body);
+        }
+
+        @Override
+        public void visitVarDef(final JCVariableDecl tree) {
+            if (sym.kind == Kinds.VAR) {
+                // Don't visit a parameter once when the sym is the method
+                // and once when the sym is the parameter.
+                scan(tree.mods);
+                scan(tree.vartype);
+            }
+            scan(tree.init);
+        }
+
+        @Override
+        public void visitClassDef(JCClassDecl tree) {
+            // We can only hit a classdef if it is declared within
+            // a method. Ignore it - the class will be visited
+            // separately later.
+        }
+
+        @Override
+        public void visitNewClass(JCNewClass tree) {
+            if (tree.def == null) {
+                // For an anonymous class instantiation the class
+                // will be visited separately.
+                super.visitNewClass(tree);
+            }
         }
     }
 

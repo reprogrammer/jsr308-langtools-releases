@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -140,6 +140,7 @@ public class JavapTask implements DisassemblerTool.DisassemblerTask, Messages {
         new Option(false, "-v", "-verbose", "-all") {
             void process(JavapTask task, String opt, String arg) {
                 task.options.verbose = true;
+                task.options.showDescriptors = true;
                 task.options.showFlags = true;
                 task.options.showAllAttrs = true;
             }
@@ -190,7 +191,7 @@ public class JavapTask implements DisassemblerTool.DisassemblerTask, Messages {
 
         new Option(false, "-s") {
             void process(JavapTask task, String opt, String arg) {
-                task.options.showInternalSignatures = true;
+                task.options.showDescriptors = true;
             }
         },
 
@@ -362,7 +363,8 @@ public class JavapTask implements DisassemblerTool.DisassemblerTask, Messages {
         }
 
         try {
-            handleOptions(options, false);
+            if (options != null)
+                handleOptions(options, false);
         } catch (BadArgs e) {
             throw new IllegalArgumentException(e.getMessage());
         }

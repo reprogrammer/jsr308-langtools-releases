@@ -42,7 +42,7 @@ import com.sun.tools.javac.code.Type.*;
 import com.sun.tools.javac.code.Symbol.*;
 import com.sun.tools.javac.comp.DeferredAttr.DeferredAttrContext;
 import com.sun.tools.javac.comp.Infer.InferenceContext;
-import com.sun.tools.javac.comp.Infer.InferenceContext.FreeTypeListener;
+import com.sun.tools.javac.comp.Infer.FreeTypeListener;
 import com.sun.tools.javac.tree.JCTree.*;
 import com.sun.tools.javac.tree.JCTree.JCPolyExpression.*;
 
@@ -80,6 +80,7 @@ public class Check {
     private boolean enableSunApiLintControl;
     private final TreeInfo treeinfo;
     private final JavaFileManager fileManager;
+    private final Profile profile;
 
     // The set of lint options currently in effect. It is initialized
     // from the context, and then is set/reset as needed by Attr as it
@@ -110,7 +111,7 @@ public class Check {
         enter = Enter.instance(context);
         deferredAttr = DeferredAttr.instance(context);
         infer = Infer.instance(context);
-        this.types = Types.instance(context);
+        types = Types.instance(context);
         diags = JCDiagnostic.Factory.instance(context);
         Options options = Options.instance(context);
         lint = Lint.instance(context);
@@ -132,6 +133,8 @@ public class Check {
 
         Target target = Target.instance(context);
         syntheticNameChar = target.syntheticNameChar();
+
+        profile = Profile.instance(context);
 
         boolean verboseDeprecated = lint.isEnabled(LintCategory.DEPRECATION);
         boolean verboseUnchecked = lint.isEnabled(LintCategory.UNCHECKED);
@@ -530,7 +533,7 @@ public class Check {
             inferenceContext.addFreeTypeListener(List.of(req), new FreeTypeListener() {
                 @Override
                 public void typesInferred(InferenceContext inferenceContext) {
-                    checkType(pos, found, inferenceContext.asInstType(req, types), checkContext);
+                    checkType(pos, found, inferenceContext.asInstType(req), checkContext);
                 }
             });
         }
@@ -1023,7 +1026,7 @@ public class Check {
         };
 
     /** Check that given modifiers are legal for given symbol and
-     *  return modifiers together with any implicit modififiers for that symbol.
+     *  return modifiers together with any implicit modifiers for that symbol.
      *  Warning: we can't use flags() here since this method
      *  is called during class enter, when flags() would cause a premature
      *  completion.
@@ -1069,7 +1072,7 @@ public class Check {
             }
             // Imply STRICTFP if owner has STRICTFP set.
             if (((flags|implicit) & Flags.ABSTRACT) == 0)
-              implicit |= sym.owner.flags_field & STRICTFP;
+                implicit |= sym.owner.flags_field & STRICTFP;
             break;
         case TYP:
             if (sym.isLocal()) {
@@ -1202,7 +1205,7 @@ public class Check {
 
     /** Validate a type expression. That is,
      *  check that all type arguments of a parametric type are within
-     *  their bounds. This must be done in a second phase after type attributon
+     *  their bounds. This must be done in a second phase after type attribution
      *  since a class might have a subclass as type parameter bound. E.g:
      *
      *  <pre>{@code
@@ -1588,6 +1591,7 @@ public class Check {
                    (other.flags() & STATIC) == 0) {
             log.error(TreeInfo.diagnosticPositionFor(m, tree), "override.static",
                       cannotOverride(m, other));
+            m.flags_field |= BAD_OVERRIDE;
             return;
         }
 
@@ -1599,6 +1603,7 @@ public class Check {
             log.error(TreeInfo.diagnosticPositionFor(m, tree), "override.meth",
                       cannotOverride(m, other),
                       asFlagSet(other.flags() & (FINAL | STATIC)));
+            m.flags_field |= BAD_OVERRIDE;
             return;
         }
 
@@ -1615,6 +1620,7 @@ public class Check {
                       other.flags() == 0 ?
                           Flag.PACKAGE :
                           asFlagSet(other.flags() & AccessFlags));
+            m.flags_field |= BAD_OVERRIDE;
             return;
         }
 
@@ -1642,6 +1648,7 @@ public class Check {
                           "override.incompatible.ret",
                           cannotOverride(m, other),
                           mtres, otres);
+                m.flags_field |= BAD_OVERRIDE;
                 return;
             }
         } else if (overrideWarner.hasNonSilentLint(LintCategory.UNCHECKED)) {
@@ -1661,6 +1668,7 @@ public class Check {
                       "override.meth.doesnt.throw",
                       cannotOverride(m, other),
                       unhandledUnerased.head);
+            m.flags_field |= BAD_OVERRIDE;
             return;
         }
         else if (unhandledUnerased.nonEmpty()) {
@@ -1956,6 +1964,34 @@ public class Check {
         }
     }
 
+    private Filter<Symbol> equalsHasCodeFilter = new Filter<Symbol>() {
+        public boolean accepts(Symbol s) {
+            return MethodSymbol.implementation_filter.accepts(s) &&
+                    (s.flags() & BAD_OVERRIDE) == 0;
+
+        }
+    };
+
+    public void checkClassOverrideEqualsAndHash(DiagnosticPosition pos,
+            ClassSymbol someClass) {
+        if (lint.isEnabled(LintCategory.OVERRIDES)) {
+            MethodSymbol equalsAtObject = (MethodSymbol)syms.objectType
+                    .tsym.members().lookup(names.equals).sym;
+            MethodSymbol hashCodeAtObject = (MethodSymbol)syms.objectType
+                    .tsym.members().lookup(names.hashCode).sym;
+
+            boolean overridesEquals = types.implementation(equalsAtObject,
+                someClass, false, equalsHasCodeFilter).owner == someClass;
+            boolean overridesHashCode = types.implementation(hashCodeAtObject,
+                someClass, false, equalsHasCodeFilter) != hashCodeAtObject;
+
+            if (overridesEquals && !overridesHashCode) {
+                log.warning(LintCategory.OVERRIDES, pos,
+                        "override.equals.but.not.hashcode", someClass.fullname);
+            }
+        }
+    }
+
     private boolean checkNameClash(ClassSymbol origin, Symbol s1, Symbol s2) {
         ClashFilter cf = new ClashFilter(origin.type);
         return (cf.accepts(s1) &&
@@ -2232,10 +2268,13 @@ public class Check {
     void checkFunctionalInterface(JCTree tree, Type funcInterface) {
         ClassType c = new ClassType(Type.noType, List.<Type>nil(), null);
         ClassSymbol csym = new ClassSymbol(0, names.empty, c, syms.noSymbol);
-        c.interfaces_field = List.of(funcInterface);
+        c.interfaces_field = List.of(types.removeWildcards(funcInterface));
         c.supertype_field = syms.objectType;
         c.tsym = csym;
         csym.members_field = new Scope(csym);
+        Symbol descSym = types.findDescriptorSymbol(funcInterface.tsym);
+        Type descType = types.findDescriptorType(funcInterface);
+        csym.members_field.enter(new MethodSymbol(PUBLIC, descSym.name, descType, csym));
         csym.completer = null;
         checkImplementations(tree, csym, csym);
     }
@@ -3030,6 +3069,12 @@ public class Check {
                       log.mandatoryWarning(pos, "sun.proprietary", s);
                 }
             });
+        }
+    }
+
+    void checkProfile(final DiagnosticPosition pos, final Symbol s) {
+        if (profile != Profile.DEFAULT && (s.flags() & NOT_IN_PROFILE) != 0) {
+            log.error(pos, "not.in.profile", s, profile);
         }
     }
 

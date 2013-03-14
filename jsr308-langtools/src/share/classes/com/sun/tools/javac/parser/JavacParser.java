@@ -1172,7 +1172,7 @@ public class JavacParser implements Parser {
             } else return illegal();
             break;
         case MONKEYS_AT:
-            // Only annotated cast types are valid
+            // Only annotated cast types and method references are valid
             List<JCAnnotation> typeAnnos = typeAnnotationsOpt();
             if (typeAnnos.isEmpty()) {
                 // else there would be no '@'
@@ -1183,17 +1183,27 @@ public class JavacParser implements Parser {
 
             if ((mode & TYPE) == 0) {
                 // Type annotations on class literals no longer legal
-                if (!expr.hasTag(Tag.SELECT)) {
+                switch (expr.getTag()) {
+                case REFERENCE: {
+                    JCMemberReference mref = (JCMemberReference) expr;
+                    mref.expr = toP(F.at(pos).AnnotatedType(typeAnnos, mref.expr));
+                    t = mref;
+                    break;
+                }
+                case SELECT: {
+                    JCFieldAccess sel = (JCFieldAccess) expr;
+
+                    if (sel.name != names._class) {
+                        return illegal();
+                    } else {
+                        log.error(token.pos, "no.annotations.on.dot.class");
+                        return expr;
+                    }
+                }
+                default:
                     return illegal(typeAnnos.head.pos);
                 }
-                JCFieldAccess sel = (JCFieldAccess)expr;
 
-                if (sel.name != names._class) {
-                    return illegal();
-                } else {
-                    log.error(token.pos, "no.annotations.on.dot.class");
-                    return expr;
-                }
             } else {
                 // Type annotations targeting a cast
                 t = insertAnnotationsToMostInner(expr, typeAnnos, false);
@@ -1465,18 +1475,40 @@ public class JavacParser implements Parser {
     /**
      * If we see an identifier followed by a '&lt;' it could be an unbound
      * method reference or a binary expression. To disambiguate, look for a
-     * matching '&gt;' and see if the subsequent terminal is either '.' or '#'.
+     * matching '&gt;' and see if the subsequent terminal is either '.' or '::'.
      */
     @SuppressWarnings("fallthrough")
     boolean isUnboundMemberRef() {
         int pos = 0, depth = 0;
-        for (Token t = S.token(pos) ; ; t = S.token(++pos)) {
+        outer: for (Token t = S.token(pos) ; ; t = S.token(++pos)) {
             switch (t.kind) {
                 case IDENTIFIER: case UNDERSCORE: case QUES: case EXTENDS: case SUPER:
                 case DOT: case RBRACKET: case LBRACKET: case COMMA:
                 case BYTE: case SHORT: case INT: case LONG: case FLOAT:
                 case DOUBLE: case BOOLEAN: case CHAR:
+                case MONKEYS_AT:
                     break;
+
+                case LPAREN:
+                    // skip annotation values
+                    int nesting = 0;
+                    for (; ; pos++) {
+                        TokenKind tk2 = S.token(pos).kind;
+                        switch (tk2) {
+                            case EOF:
+                                return false;
+                            case LPAREN:
+                                nesting++;
+                                break;
+                            case RPAREN:
+                                nesting--;
+                                if (nesting == 0) {
+                                    continue outer;
+                                }
+                                break;
+                        }
+                    }
+
                 case LT:
                     depth++; break;
                 case GTGTGT:
@@ -1502,7 +1534,7 @@ public class JavacParser implements Parser {
     /**
      * If we see an identifier followed by a '&lt;' it could be an unbound
      * method reference or a binary expression. To disambiguate, look for a
-     * matching '&gt;' and see if the subsequent terminal is either '.' or '#'.
+     * matching '&gt;' and see if the subsequent terminal is either '.' or '::'.
      */
     @SuppressWarnings("fallthrough")
     ParensResult analyzeParens() {
@@ -1989,7 +2021,7 @@ public class JavacParser implements Parser {
     /** Creator = [Annotations] Qualident [TypeArguments] ( ArrayCreatorRest | ClassCreatorRest )
      */
     JCExpression creator(int newpos, List<JCExpression> typeArgs) {
-        List<JCAnnotation> newAnnotations = typeAnnotationsOpt();
+        List<JCAnnotation> newAnnotations = annotationsOpt(Tag.ANNOTATION);
 
         switch (token.kind) {
         case BYTE: case SHORT: case CHAR: case INT: case LONG: case FLOAT:
@@ -2005,11 +2037,6 @@ public class JavacParser implements Parser {
         default:
         }
         JCExpression t = qualident(true);
-
-        // handle type annotations for non primitive arrays
-        if (newAnnotations.nonEmpty()) {
-            t = insertAnnotationsToMostInner(t, newAnnotations, false);
-        }
 
         int oldmode = mode;
         mode = TYPE;
@@ -2044,6 +2071,11 @@ public class JavacParser implements Parser {
         }
         mode = oldmode;
         if (token.kind == LBRACKET || token.kind == MONKEYS_AT) {
+            // handle type annotations for non primitive arrays
+            if (newAnnotations.nonEmpty()) {
+                t = insertAnnotationsToMostInner(t, newAnnotations, false);
+            }
+
             JCExpression e = arrayCreatorRest(newpos, t);
             if (diamondFound) {
                 reportSyntaxError(lastTypeargsPos, "cannot.create.array.with.diamond");
@@ -2068,8 +2100,18 @@ public class JavacParser implements Parser {
             if (newClass.def != null) {
                 assert newClass.def.mods.annotations.isEmpty();
                 if (newAnnotations.nonEmpty()) {
+                    // Add type and declaration annotations to the new class;
+                    // com.sun.tools.javac.code.TypeAnnotations.TypeAnnotationPositions.visitNewClass(JCNewClass)
+                    // will later remove all type annotations and only leave the
+                    // declaration annotations.
                     newClass.def.mods.pos = earlier(newClass.def.mods.pos, newAnnotations.head.pos);
-                    newClass.def.mods.annotations = List.convert(JCAnnotation.class, newAnnotations);
+                    newClass.def.mods.annotations = newAnnotations;
+                }
+            } else {
+                // handle type annotations for instantiations
+                if (newAnnotations.nonEmpty()) {
+                    t = insertAnnotationsToMostInner(t, newAnnotations, false);
+                    newClass.clazz = t;
                 }
             }
             return newClass;
@@ -2846,7 +2888,7 @@ public class JavacParser implements Parser {
      *                          | Identifier "=" AnnotationValue
      */
     JCExpression annotationFieldValue() {
-        if (token.kind == IDENTIFIER) {
+        if (LAX_IDENTIFIER.accepts(token.kind)) {
             mode = EXPR;
             JCExpression t1 = term1();
             if (t1.hasTag(IDENT) && token.kind == EQ) {
@@ -3037,7 +3079,7 @@ public class JavacParser implements Parser {
         for (JCTree commendImport : commandImports)
             defs.append(commendImport);
         while (token.kind != EOF) {
-            if (token.pos <= endPosTable.errorEndPos) {
+            if (token.pos > 0 && token.pos <= endPosTable.errorEndPos) {
                 // error recovery
                 skip(checkForImports, false, false, false);
                 if (token.kind == EOF)

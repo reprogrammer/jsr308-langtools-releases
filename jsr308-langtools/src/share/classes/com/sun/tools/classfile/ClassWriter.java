@@ -483,7 +483,7 @@ public class ClassWriter {
             out.writeByte(attr.method_parameter_table.length);
             for (MethodParameters_attribute.Entry e : attr.method_parameter_table) {
                 out.writeShort(e.name_index);
-                out.writeInt(e.flags);
+                out.writeShort(e.flags);
             }
             return null;
         }
@@ -732,8 +732,8 @@ public class ClassWriter {
             // new expression
             case NEW:
             // constructor/method reference receiver
-            case CONSTRUCTOR_REFERENCE_RECEIVER:
-            case METHOD_REFERENCE_RECEIVER:
+            case CONSTRUCTOR_REFERENCE:
+            case METHOD_REFERENCE:
                 out.writeShort(p.offset);
                 break;
             // local variable
