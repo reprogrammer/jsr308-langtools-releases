@@ -29,11 +29,13 @@
 \newcommand{\ttrcb}{\texttt{\char "7D}}
 \newcommand{\ttbs}{\texttt{\char "5C}}
 
+\newcommand{\preverbnegspace}{\vspace{-5pt}}
+
 \begin{document}
 
 \def\codesize{\smaller}
 %HEVEA \def\codesize{\relax}
-\newcommand{\code}[1]{\ifmmode{\mbox{\codesize\ttfamily{#1}}}\else{\codesize\ttfamily #1}\fi}
+\newcommand{\code}[1]{{\ifmmode{\mbox{\codesize\ttfamily{#1}}}\else{\codesize\ttfamily #1}\fi}}
 \def\<#1>{\code{#1}}
 % Text size is \small
 % \small and \footnotesize are the same size!!  And seem to be the same as
@@ -49,6 +51,8 @@
 
 %HEVEA \def\strut{\relax}
 
+%HEVEA \newcommand{\etalchar}[1]{$^{#1}$}
+
 %BEGIN LATEX
 \RecustomVerbatimEnvironment{Verbatim}{Verbatim}{fontsize=\smaller}
 %END LATEX
@@ -62,9 +66,10 @@
 
 \hyphenation{Pecht-chan-ski}
 
-\urldef{\jlsEightEightFourURL}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-8.html#jls-8.8.4}
-\urldef{\jlsFifteenNine}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-15.html#jls-15.9}
+\urldef{\jlsEightEightFour}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-8.html#jls-8.8.4}
+\urldef{\jlsFifteenEightThree}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-15.html#jls-15.8.3}
 \urldef{\jlsFifteenEightFour}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-15.html#jls-15.8.4}
+\urldef{\jlsFifteenNine}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-15.html#jls-15.9}
 
 
 
@@ -112,7 +117,7 @@ Detection''~\cite{JSR305}.
 % .)
 
 This proposal does not change the compile-time, load-time, or run-time
-semantics of Java.  It does not change the abilities of Java annotation
+semantics of Java.  It does not directly change the abilities of Java annotation
 processors as defined in JSR 269~\cite{JSR269}.
 % or of instrumentation agents~\cite{JSR163}.
 The proposal merely makes annotations more general --- and thus more useful
@@ -144,13 +149,11 @@ libraries, etc.  For more details, see the Java Community Process FAQ at
 
 
 A FAQ (Frequently Asked Questions) document complements this specification;
-see \myurl{http://types.cs.washington.edu/jsr308/jsr308-faq.html}.
+see \myurl{http://types.cs.washington.edu/jsr308/current/jsr308-faq.html}.
 
 
 
 \section{Java language syntax extensions\label{syntax}}
-
-\newcommand{\preverbnegspace}{\vspace{-5pt}}
 
 \subsection{Source locations for annotations on types\label{type-annotation-locations}}
 
@@ -219,7 +222,7 @@ extension to declaration annotations (item
 \end{Verbatim}
 \preverbnegspace
 
-For generic constructors (JLS \ahref{\jlsEightEightFourURL}{\S8.8.4}), the
+For generic constructors (JLS \ahref{\jlsEightEightFour}{\S8.8.4}), the
 annotation follows the explicit type arguments (JLS
 \ahref{\jlsFifteenNine}{\S15.9}):
 
@@ -365,8 +368,13 @@ possible on the constructor result.
 (Note that the result of a constructor is different from the receiver.  The
 receiver only exists for inner class constructors, as in
 \code{theReceiver.new InnerClass()}.  The receiver is the containing
-object, and in the body of the constructor it is referred to as
-\code{\emph{Supertype}.this}.  In the constructor body, the result is referred to as
+object.
+Note that the receiver of an inner class constructor does not cause run-time
+dispatching as other receivers do.
+In the body of the constructor, the receiver is referred to as
+\code{\emph{Supertype}.this}, and there can be multiple receivers for
+multiply-nested inner classes.
+  In the constructor body, the result is referred to as
 \code{this}.  In any non-constructor, the receiver (if any) is referred to
 as \code{this}.)
 % \end{itemize}
@@ -418,11 +426,16 @@ receiver.
   In a constructor in an inner type, the receiver
   has a name such as \code{Outer.this}.
 
-  The optional receiver parameter has no effect on execution --- it only
+  The optional receiver parameter has no effect on generated code nor on
+  execution --- it only
   serves as a place to write annotations on the receiver.  The compiler
   generates the same bytecodes, and reflection returns the same results
   regarding number of method formal parameters, whether or not the optional
-  receiver parameter is present.
+  receiver parameter is present.  The receiver
+  parameter is not persisted as a formal parameter in the bytecode.
+  If the receiver parameter is annotated by
+  a type annotation, then those annotations persist in a 
+  \<*TypeAnnotations> attribute in \<method\_info>.
 
 
   As an example, here are the standard definitions for \code{toString} and \code{equals}:
@@ -460,25 +473,13 @@ possible to annotate the receiver's type:
   }
 \end{Verbatim}
 
-An example of an inner constructor with both a result and a receiver
-annotation is:
-
-\preverbnegspace
-\begin{Verbatim}
-class Outer {
-  class Inner {
-    @Result Inner(@Receiver Outer Outer.this, boolean b) { }
-  }
-}
-\end{Verbatim}
-
   An anonymous class has no name for its innermost class, so it is not
   possible to annotate the receiver of its constructor or methods.
   If you need to do so, re-write the
   anonymous class into a named class and then use a receiver parameter.
 
   A method in an inner class (or a constructor in an
-  inner class that is in an inner class) has multiple receivers:  one for
+  inner class) has multiple receivers:  one for
   each containing class.  For a method, the receivers are named \<this>,
   \<Outer.this>, etc.  Only the innermost receiver may be written as a
   formal parameter.  This restriction does not limit expressiveness, because
@@ -504,6 +505,24 @@ It has three receivers (JLS \ahref{\jlsFifteenNine}{\S15.9}).
 One is referred to as \<this> and has type \<@C Inner>.
 One is referred to as \<Middle.this> and has type \<@B Middle>.
 One is referred to as \<Outer.this> and has type \<@A Outer>.
+
+A constructor has no receiver, unless the constructor is in an inner class.
+Within an inner class constructor, the receiver has a name such as
+\<Outer.this>, and \<this> refers to the result.  (By contrast, within a
+method \<this> refers to the receiver; JLS \ahref{\jlsFifteenEightThree}
+notes the two distinct uses for \<this>.)
+An example of an inner constructor with both a result and a receiver
+annotation is:
+
+\preverbnegspace
+\begin{Verbatim}
+class Outer {
+  class Inner {
+    @Result Inner(@Receiver Outer Outer.this, boolean b) { }
+  }
+}
+\end{Verbatim}
+
 
 It is not permitted to write a declaration annotation on the
 receiver (\code{this}) formal parameter declaration.
@@ -709,11 +728,18 @@ Any \nt{Type} may be prefixed by \opt{\nt{Annotations}}:
 \nt{InterfaceMethodOrFieldDecl}: \\
 \qquad       \nt{\new{Unann}Type} \nt{Identifier} \nt{InterfaceMethodOrFieldRest} \\
 \\
+\nt{LocalVariableDeclarationStatement}: \\
+\qquad        \multi{\nt{VariableModifier}} \nt{\new{Unann}Type} \nt{VariableDeclarators} \term{;}
+\\
 \nt{Resource}: \\
 \qquad        \multi{\nt{VariableModifier}} \nt{\new{Unann}ReferenceType} \nt{VariableDeclaratorId} \term{=} \nt{Expression} \\
 \\
 \nt{ForVarControl}: \\
 \qquad       \multi{\nt{VariableModifier}} \nt{\new{Unann}Type} \nt{VariableDeclaratorId} \nt{ForVarControlRest} \\
+\\
+\nt{AnnotationTypeElementRest}: \\
+\qquad       \nt{\new{Unann}Type} \nt{Identifier} \nt{AnnotationMethodOrConstantRest} \term{;} \\
+\qquad       \ldots \\
 \\
 \new{\nt{QualifiedTypeList}}: \\
 \qquad        \new{\opt{\nt{Annotations}}} \nt{UnannReferenceType} \multi{ \term{,}   \new{\opt{\nt{Annotations}}} \nt{UnannReferenceType} }
@@ -845,6 +871,11 @@ declaration in a class or method declaration.
 \end{enumerate}
 
 
+The grammar permits modifiers, declaration annotations, and type annotation
+to be freely intermixed at any location where all are permitted (such as
+before a field declaration or a non-\<void>-returning method).  It is
+strongly recommended that type annotations be written immediately before
+the type, after declaration annotations and modifiers.
 
 
 \subsubsection{Syntax of array annotations\label{array-syntax}}
@@ -982,6 +1013,20 @@ within angle brackets as for generics.
 
 
 
+\subsubsection{Syntax of annotations on qualified types\label{qualified-type-syntax}}
+
+The syntax to annotate a qualitied type use is (for example) 
+\<java.lang.@NonNull String> or \<Outer. @NonNull StaticNestedClass>.
+An alternative would be to write the annotation before the full type
+instead of the simple name, as in \<@NonNull java.lang.String> or
+\<@NonNull Outer.StaticNestedClass>.  The alternative would require type
+resolution to determine which component of the qualified name is being
+annotated (and whether a given component is a package name, a class, etc.).
+% The alternative has a much uglier and more complex implementation.
+We wish to keep the grammar unambiguous, to put each annotation near the
+thing being annotated, and not to preclude future extensions such as
+annotations on package names or outer classes.
+% Finally, use of fully-qualified names in Java source code is uncommon.
 
 
 \subsection{Target meta-annotations for type annotations\label{target-meta-annotation}}
@@ -1433,6 +1478,12 @@ Runtime[In]VisibleTypeAnnotations_attribute {
 
 A type annotation is stored in a \RuntimeInOrVisibleTypeAnnotations attribute
 on the smallest enclosing class, field, method, or \<Code> structure.
+Type annotations in the body of an initializer appear with the code that
+performs the initialization, not on the field that is being initialized.
+Type annotations in the body of instance initializer appear on on all
+initial constructors, and type annotations in the body of a class
+initializer appear on the \<clinit> symbol.
+
 
 A type annotation written on a declaration's type (e.g., on a field type or
 on a method return type)
@@ -1451,23 +1502,25 @@ Annotations that target instructions are those in
 Figure~\ref{tbl:target_types} with \<target\_type> $\ge$ 0x40; see below
 for details.
 
-No changes are made to the StackMapTable that stores the types of elements
-on the stack.
-% Doing so would eliminates the need for pluggable type-checking on byte code
-% to perform type qualifier inference for local variables and stack elements,
-% much as byte code verification does not need to perform type inference for
-% local variables and stack elements.
-% StackMapTable is the attribute that defines these.  They are differential
-% and rather tricky, but we'll just copy that format.  There is no public
-% API, just a defined classfile format.
-No changes are made to the Exception table.
+%% Avoid saying everywhere that something *doesn't* change.
+% No changes are made to the StackMapTable that stores the types of elements
+% on the stack.
+% % Doing so would eliminate the need for pluggable type-checking on byte code
+% % to perform type qualifier inference for local variables and stack elements,
+% % much as byte code verification does not need to perform type inference for
+% % local variables and stack elements.
+% % StackMapTable is the attribute that defines these.  They are differential
+% % and rather tricky, but we'll just copy that format.  There is no public
+% % API, just a defined classfile format.
+% No changes are made to the Exception table.
 Local variable type annotations are stored in the class file, see
 Section~\ref{class-file:ext:ri:localvar}.
 
-The VM does not have to validate all the constraints in
-Section~\ref{class-file:ext:target_info}, such as that offsets point to the
-right type of instruction.  The VM does not do format checking (JVMS 4.8)
-on attributes used solely for reflection.
+%% Avoid saying everywhere that something *doesn't* change.
+% The VM does not have to validate all the constraints in
+% Section~\ref{class-file:ext:target_info}, such as that offsets point to the
+% right type of instruction.  The VM does not do format checking (JVMS 4.8)
+% on attributes used solely for reflection.
 
 The JSR 308 changes apply to class file version 52 and higher.
 
@@ -1476,8 +1529,8 @@ The JSR 308 changes apply to class file version 52 and higher.
 For backward compatibility, JSR 308 uses new attributes for storing
 the type annotations.  In other words, JSR 308 merely reserves the
 names of a few new attributes and specifies their layout.
-JVMs ignore unknown
-attributes.
+If the new attributes appear in a 51.0 or earlier
+class file, the JVM ignores them.
 JSR 308 does
 not alter the way that existing annotations on classes, methods, method formal parameters,
 and fields are stored in the class file.
@@ -1516,7 +1569,6 @@ type_annotation {
         offset_target;
         type_argument_target;
         method_reference_target;
-        method_reference_type_argument;
     } target_info;     // identifies the targeted program element, see Section 3.3
     type_path target_path; // identifies targeted type in a compound type (array, generic, etc.), see Section 3.4
     // Original fields from "annotation" structure:
@@ -1646,9 +1698,10 @@ type argument in method reference & \code{METHOD\_REFERENCE\_TYPE\_ARGUMENT}
   % By contrast, declaration annotations other than type parameter
   % declarations appear in in \code{annotation} attributes in the class file.
   % 
-  The symbolic constants appear in the enums
-  \code{com.sun.tools.javac.code.TargetType} and
-  \code{com.sun.tools.classfile.TypeAnnotation.TargetType}.
+  %% This implementation detail is out of place for this document.
+  %   The symbolic constants appear in the enums
+  %   \code{com.sun.tools.javac.code.TargetType} and
+  %   \code{com.sun.tools.classfile.TypeAnnotation.TargetType}.
 }
 \end{figure}
 
@@ -1705,6 +1758,14 @@ A \RuntimeInOrVisibleTypeAnnotations attribute containing a
 otherwise, in the attributes table of a \code{ClassFile} structure if it
 targets a class declaration type parameter.
 
+(These declaration annotations appear in 
+\RuntimeInOrVisibleTypeAnnotations attributes, rather than 
+\RuntimeInOrVisibleAnnotations attributes, because genericss are not
+well-handled by the classfile.  For example, the \<Signature> attribute of
+of a generic class/method cannot store attributes, much less index them to
+indicate which type parameter is being annotated.  The additional location
+information in a \<type\_annotation> is necessary.)
+
 
 \subsubsection{Class supertypes:  \code{extends} and \code{implements} clauses\label{class-file:ext:ri:extends}}
 
@@ -1713,9 +1774,7 @@ targets a class declaration type parameter.
 
 \preverbnegspace
 \begin{Verbatim}
-    supertype_target {
-        u2 supertype_index;
-    };
+    supertype_target { u2 supertype_index; };
 \end{Verbatim}
 
 \code{supertype\_index} is \code{-1} (\code{65535}) if the annotation is on the
@@ -1901,6 +1960,7 @@ These annotations are attached to a single bytecode, not a bytecode range
 single value, not about the behavior of a code block.
 
 
+\attributelocation{containing an \code{offset\_target}}{\code{Code} attribute}
 
 % The Java compiler must emit a \code{checkcast} bytecode for any annotated
 % cast, so that there is a target for the \code{offset} field.  Ordinarily, a
@@ -1922,7 +1982,7 @@ single value, not about the behavior of a code block.
 \subsubsection{Casts and type arguments to constructor/method invocation/references\label{class-file:ext:ri:cast}\label{class-file:ext:ri:con-typearg}\label{class-file:ext:ri:mref-typearg}\label{class-file:ext:ri:cref-typearg}}
 
 \targetinfocontents{a cast or a type argument in a constructor/method
-  call/reference}{invocation\_type\_argument\_target or method\_reference\_type\_argument}
+  call/reference}{type\_argument\_target}
 
 \preverbnegspace
 \begin{Verbatim}
@@ -1956,7 +2016,8 @@ creates the target expression instead.  This approach permits code
 generation for existing compilers to be unaffected.
 
 If the compiler eliminates an annotated cast, it is required to retain the
-annotations on the cast in the class file.  When a cast is removed, the
+annotations on the cast in the class file (if the annotation type has at
+least \<RetentionPolicy.CLASS> retention).  When a cast is removed, the
 compiler may need to adjust (the locations of) the annotations, to account
 for the relationship between the expression's type and the casted-to type.
 Consider:
@@ -2231,7 +2292,9 @@ toolchain, and it promotes the maintainability and simplicity of the
 modifications. Second, since annotations do not affect the runtime
 semantics of a program, applications written with custom type
 qualifiers are backward-compatible with the vanilla JDK\@.
-No modifications to the virtual machine are necessary.
+No modifications to the virtual machine are necessary,
+other than the changes to the class file format discussed in
+Section~\ref{class-file}.
 
 Four compiler plug-ins that perform type qualifier type-checking, all built
 using JSR 308, are distributed at the JSR 308 webpage,
@@ -3060,7 +3123,7 @@ A JavaCOP type checker must be programmed in a combination of Java and
 JavaCOP's own declarative pattern-matching and rule-based language.
 JavaCOP's authors have defined parts of over a dozen
 type-checkers in their language.  Their paper does not report that they have
-run any of these type-checkers on a real program; this is due to
+run any of these type-checkers on a non-trivial program; this is due to
 limitations that make JavaCOP impractical (so far) for real use.
 
 
@@ -3422,7 +3485,7 @@ These tools include:
 % 
 % 
 % A separate document, ``Custom type qualifiers via annotations on Java
-% types'' (\myurl{http://types.cs.washington.edu/jsr308/java-type-qualifiers.pdf}),
+% types'' (\myurl{http://types.cs.washington.edu/jsr308/current/java-type-qualifiers.pdf}),
 % explores implementation strategies for annotation processors that act as type-checking
 % compiler plug-ins.  It is not germane to this proposal, both because this proposal
 % does not concern itself with annotation semantics and because writing such

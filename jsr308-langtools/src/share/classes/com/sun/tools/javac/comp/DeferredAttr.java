@@ -229,9 +229,9 @@ public class DeferredAttr extends JCTree.Visitor {
         public Type complete(DeferredType dt, ResultInfo resultInfo, DeferredAttrContext deferredAttrContext) {
             switch (deferredAttrContext.mode) {
                 case SPECULATIVE:
-                    Assert.check(dt.mode == null ||
-                            (dt.mode == AttrMode.SPECULATIVE &&
-                            dt.speculativeType(deferredAttrContext.msym, deferredAttrContext.phase).hasTag(NONE)));
+                    //Note: if a symbol is imported twice we might do two identical
+                    //speculative rounds...
+                    Assert.check(dt.mode == null || dt.mode == AttrMode.SPECULATIVE);
                     JCTree speculativeTree = attribSpeculative(dt.tree, dt.env, resultInfo);
                     dt.speculativeCache.put(deferredAttrContext.msym, speculativeTree, deferredAttrContext.phase);
                     return speculativeTree.type;
@@ -303,11 +303,6 @@ public class DeferredAttr extends JCTree.Visitor {
             attr.attribTree(newTree, speculativeEnv, resultInfo);
             unenterScanner.scan(newTree);
             return newTree;
-        } catch (Abort ex) {
-            //if some very bad condition occurred during deferred attribution
-            //we should dump all errors before killing javac
-            deferredDiagnosticHandler.reportDeferredDiagnostics();
-            throw ex;
         } finally {
             unenterScanner.scan(newTree);
             log.popDiagnosticHandler(deferredDiagnosticHandler);

@@ -31,10 +31,77 @@ The current development version of the specification is available in the
 <!-- See Makefile for documentation of how to compute a new changelog entry.
 -->
 
-  <dt><a href="java-annotation-design-20130202.html">2 February 2013</a></dt>
+  <dt><a href="java-annotation-design-20130401.html">1 April 2013</a></dt>
   <dd>
-    Change method_reference_receiver to method_reference, and change
-    constructor_reference_receiver to constructor_reference.
+    Grammar changes:
+    <ul>
+      <li>
+        Add missing modified grammar productions for
+        <em>AnnotationTypeElementRest</em> and
+        <em>LocalVariableDeclarationStatement</em>.
+      </li>
+    </ul>
+
+    Clarifications:
+    <ul>
+      <li>
+        No dynamic dispatching occurs on the receiver of an inner constructor.
+      </li>
+      <li>
+        Explain the rationale for the syntax <tt>java.lang.@NonNull
+        String</tt>, as opposed to <tt>java.lang.@NonNull String</tt>.
+      </li>
+      <li>
+        Explain why declaration annotations on a type parameter appear in
+        the classfile in <tt>type_annotation</tt> elements rather than
+        <tt>annotation</tt> elements.
+      </li>
+      <li>
+        The receiver parameter is not persisted as a formal parameter in
+        the bytecode.
+      </li>
+      <li>
+        Remove text that says no changes are made, to reduce confusion and
+        make it easier to integrate the text into the JLS.
+      </li>
+    </ul>
+
+    Advice:
+    <ul>
+      <li>
+        In locations where all are permitted, type annotations should
+        appear immediately before the type, 
+        after declaration annotations and modifiers.
+      </li>
+    </ul>
+
+  </dd>
+
+  <dt><a href="java-annotation-design-20130315.html">15 March 2013</a></dt>
+  <dd>
+    Classfile changes:
+    <ul>
+      <li>
+        Type annotations on the body of an initializer appear with the
+        initializer code, not with the field being initialized.
+      </li>
+      <li>
+        Change <tt>method_reference_receiver</tt> to
+        <tt>method_reference</tt>, and change 
+        <tt>constructor_reference_receiver</tt> to
+        <tt>constructor_reference</tt>. 
+      </li>
+      <li>
+        Change <tt>invocation_type_argument_target</tt> and
+        <tt>method_reference_type_argument</tt> to <tt>type_argument_target</tt>.
+      </li>
+    </ul>
+    Clarifications:
+    <ul>
+      <li>
+        Clarify the meaning of the receiver of an inner class constructor.
+      </li>
+    </ul>
   </dd>
 
   <dt><a href="java-annotation-design-20130202.html">2 February 2013</a></dt>
@@ -90,10 +157,10 @@ The current development version of the specification is available in the
         <tt>METHOD_REFERENCE_TYPE_ARGUMENT</tt>
       </li>
       <li>
-	Handle the fact that Lambda allows a cast to an intersection type:  use a
-	single classfile representation for casts and type arguments.  Also use a
-	single classfile representation for instanceof, new, and constructor/method
-	reference receivers.  Renumber target_type for consistency.
+        Handle the fact that Lambda allows a cast to an intersection type:  use a
+        single classfile representation for casts and type arguments.  Also use a
+        single classfile representation for instanceof, new, and constructor/method
+        reference receivers.  Renumber target_type for consistency.
       </li>
       <li>
         Rename <tt>target_type</tt> structure and field names.

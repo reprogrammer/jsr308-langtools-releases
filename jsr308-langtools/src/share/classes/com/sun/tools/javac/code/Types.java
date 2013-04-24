@@ -1046,7 +1046,7 @@ public class Types {
                     if (s.tag == TYPEVAR) {
                         //type-substitution does not preserve type-var types
                         //check that type var symbols and bounds are indeed the same
-                        return sameTypeVars((TypeVar)t, (TypeVar)s);
+                        return sameTypeVars((TypeVar)t.unannotatedType(), (TypeVar)s.unannotatedType());
                     }
                     else {
                         //special case for s == ? super X, where upper(s) = u
@@ -1183,6 +1183,17 @@ public class Types {
             @Override
             protected boolean containsTypes(List<Type> ts1, List<Type> ts2) {
                 return isSameTypes(ts1, ts2, true);
+            }
+
+            @Override
+            public Boolean visitWildcardType(WildcardType t, Type s) {
+                if (!s.hasTag(WILDCARD)) {
+                    return false;
+                } else {
+                    WildcardType t2 = (WildcardType)s;
+                    return t.kind == t2.kind &&
+                            isSameType(t.type, t2.type, true);
+                }
             }
         };
     // </editor-fold>
@@ -1424,23 +1435,10 @@ public class Types {
                     }
                 }
 
-                if (t.isCompound()) {
-                    Warner oldWarner = warnStack.head;
-                    warnStack.head = noWarnings;
-                    if (!visit(supertype(t), s))
-                        return false;
-                    for (Type intf : interfaces(t)) {
-                        if (!visit(intf, s))
-                            return false;
-                    }
-                    if (warnStack.head.hasLint(LintCategory.UNCHECKED))
-                        oldWarner.warn(LintCategory.UNCHECKED);
-                    return true;
-                }
-
-                if (s.isCompound()) {
-                    // call recursively to reuse the above code
-                    return visitClassType((ClassType)s, t);
+                if (t.isCompound() || s.isCompound()) {
+                    return !t.isCompound() ?
+                            visitIntersectionType((IntersectionClassType)s, t, true) :
+                            visitIntersectionType((IntersectionClassType)t, s, false);
                 }
 
                 if (s.tag == CLASS || s.tag == ARRAY) {
@@ -1516,6 +1514,18 @@ public class Types {
                     }
                 }
                 return false;
+            }
+
+            boolean visitIntersectionType(IntersectionClassType ict, Type s, boolean reverse) {
+                Warner warn = noWarnings;
+                for (Type c : ict.getComponents()) {
+                    warn.clear();
+                    if (reverse ? !isCastable(s, c, warn) : !isCastable(c, s, warn))
+                        return false;
+                }
+                if (warn.hasLint(LintCategory.UNCHECKED))
+                    warnStack.head.warn(LintCategory.UNCHECKED);
+                return true;
             }
 
             @Override
@@ -3764,9 +3774,9 @@ public class Types {
                !currentS.isEmpty()) {
             if (currentS.head != currentT.head) {
                 captured = true;
-                WildcardType Ti = (WildcardType)currentT.head;
+                WildcardType Ti = (WildcardType)currentT.head.unannotatedType();
                 Type Ui = currentA.head.getUpperBound();
-                CapturedType Si = (CapturedType)currentS.head;
+                CapturedType Si = (CapturedType)currentS.head.unannotatedType();
                 if (Ui == null)
                     Ui = syms.objectType;
                 switch (Ti.kind) {
@@ -3803,6 +3813,7 @@ public class Types {
             ListBuffer<Type> result = lb();
             for (Type t : types) {
                 if (t.tag == WILDCARD) {
+                    t = t.unannotatedType();
                     Type bound = ((WildcardType)t).getExtendsBound();
                     if (bound == null)
                         bound = syms.objectType;
@@ -3895,11 +3906,18 @@ public class Types {
     }
 
     private boolean giveWarning(Type from, Type to) {
-        Type subFrom = asSub(from, to.tsym);
-        return to.isParameterized() &&
-                (!(isUnbounded(to) ||
-                isSubtype(from, to) ||
-                ((subFrom != null) && containsType(to.allparams(), subFrom.allparams()))));
+        List<Type> bounds = to.isCompound() ?
+                ((IntersectionClassType)to).getComponents() : List.of(to);
+        for (Type b : bounds) {
+            Type subFrom = asSub(from, b.tsym);
+            if (b.isParameterized() &&
+                    (!(isUnbounded(b) ||
+                    isSubtype(from, b) ||
+                    ((subFrom != null) && containsType(b.allparams(), subFrom.allparams()))))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Type> superClosure(Type t, Type s) {

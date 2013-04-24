@@ -25,7 +25,6 @@
 
 package com.sun.tools.javac.code;
 
-import com.sun.tools.javac.model.JavacAnnoConstructs;
 import java.lang.annotation.Annotation;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -36,6 +35,8 @@ import java.util.Set;
 import javax.lang.model.type.*;
 
 import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.model.JavacAnnoConstructs;
+import com.sun.tools.javac.model.JavacTypes;
 import com.sun.tools.javac.util.*;
 import static com.sun.tools.javac.code.BoundKind.*;
 import static com.sun.tools.javac.code.Flags.*;
@@ -278,7 +279,7 @@ public class Type implements PrimitiveType {
         @SuppressWarnings("unchecked")
         A[] tmp = (A[]) java.lang.reflect.Array.newInstance(annotationType, 0);
         return tmp;
-    } 
+    }
 
     /** Return the base types of a list of types.
      */
@@ -1396,7 +1397,7 @@ public class Type implements PrimitiveType {
             for (Type b : prevBounds) {
                 //check for redundancy - use strict version of isSameType on tvars
                 //(as the standard version will lead to false positives w.r.t. clones ivars)
-                if (types.isSameType(b, bound2, true)) return;
+                if (types.isSameType(b, bound2, true) || bound == qtype) return;
             }
             bounds.put(ib, prevBounds.prepend(bound2));
             notifyChange(EnumSet.of(ib));
@@ -1568,11 +1569,11 @@ public class Type implements PrimitiveType {
     }
 
     public static class AnnotatedType extends Type
-            implements 
+            implements
                 javax.lang.model.type.ArrayType,
                 javax.lang.model.type.DeclaredType,
-                javax.lang.model.type.PrimitiveType, 
-                javax.lang.model.type.TypeVariable, 
+                javax.lang.model.type.PrimitiveType,
+                javax.lang.model.type.TypeVariable,
                 javax.lang.model.type.WildcardType {
         /** The type annotations on this type.
          */
@@ -1600,7 +1601,7 @@ public class Type implements PrimitiveType {
                     "; adding: " + typeAnnotations);
         }
 
-        @Override 
+        @Override
         public boolean isAnnotated() {
             return true;
         }
@@ -1618,7 +1619,7 @@ public class Type implements PrimitiveType {
         @Override
         public <A extends Annotation> A[] getAnnotationsByType(Class<A> annotationType) {
             return JavacAnnoConstructs.getAnnotationsByType(this, annotationType);
-        } 
+        }
 
         @Override
         public TypeKind getKind() {
@@ -1693,7 +1694,10 @@ public class Type implements PrimitiveType {
 
         @Override
         public String toString() {
-            // TODO more logic for arrays, etc.
+            // This method is only used for internal debugging output.
+            // See
+            // com.sun.tools.javac.code.Printer.visitAnnotatedType(AnnotatedType, Locale)
+            // for the user-visible logic.
             if (typeAnnotations != null &&
                     !typeAnnotations.isEmpty()) {
                 return "(" + typeAnnotations.toString() + " :: " + underlyingType.toString() + ")";
@@ -1705,9 +1709,13 @@ public class Type implements PrimitiveType {
         @Override
         public boolean contains(Type t)          { return underlyingType.contains(t); }
 
-        // TODO: attach annotations?
         @Override
-        public Type withTypeVar(Type t)          { return underlyingType.withTypeVar(t); }
+        public Type withTypeVar(Type t) {
+            // Don't create a new AnnotatedType, as 'this' will
+            // get its annotations set later.
+            underlyingType = underlyingType.withTypeVar(t);
+            return this;
+        }
 
         // TODO: attach annotations?
         @Override

@@ -55,6 +55,7 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.JCBlock;
 import com.sun.tools.javac.tree.JCTree.JCClassDecl;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
+import com.sun.tools.javac.tree.JCTree.JCLambda;
 import com.sun.tools.javac.tree.JCTree.JCMethodDecl;
 import com.sun.tools.javac.tree.JCTree.JCNewClass;
 import com.sun.tools.javac.tree.JCTree.JCTypeApply;
@@ -286,11 +287,6 @@ public class TypeAnnotations {
                 return;
             }
 
-            if (leftmostTypeAnnotationsEqual(type, typeAnnotations)) {
-                // TODO: hackish - see comment with called method.
-                return;
-            }
-
             // type is non-null and annotations are added to that type
             type = typeWithAnnotations(typetree, type, typeAnnotations, log);
 
@@ -314,33 +310,6 @@ public class TypeAnnotations {
                 // on the owner.
                 sym.owner.annotations.appendUniqueTypes(sym.getTypeAnnotationMirrors());
             }
-        }
-
-        // For a class declarations within an anonymous class
-        // declaration the body has been visited before.
-        // Don't try to annotate the type again, which would crash.
-        // This happens for type annotations that are also declaration
-        // annotations - they will appear in sym.getRawAttributes()
-        // and then because they are kind BOTH will be type and
-        // declaration annotations.
-        // TODO: find a nicer solution - not visiting the declaration twice.
-        // However, I didn't manage without breaking other test cases.
-        private static boolean leftmostTypeAnnotationsEqual(Type type, List<Attribute.TypeCompound> typeAnnotations) {
-            Type leftmost = type;
-            while (true) {
-                if (leftmost.getKind() == TypeKind.ARRAY) {
-                    leftmost = leftmost.unannotatedType();
-                    leftmost = ((ArrayType)leftmost).getComponentType();
-                } else if (leftmost.getKind() == TypeKind.DECLARED &&
-                        leftmost.getEnclosingType() != null &&
-                        leftmost.getEnclosingType().getKind() == TypeKind.DECLARED) {
-                    leftmost = leftmost.getEnclosingType();
-                } else {
-                    break;
-                }
-            }
-            // Comparing the length is enough to notice duplicate calls.
-            return leftmost.getAnnotationMirrors().length() == typeAnnotations.length();
         }
 
         // This method has a similar purpose as
@@ -956,26 +925,32 @@ public class TypeAnnotations {
 
         private static int methodParamIndex(List<JCTree> path, JCTree param) {
             List<JCTree> curr = path;
-            while (curr.head.getTag() != Tag.METHODDEF) {
+            while (curr.head.getTag() != Tag.METHODDEF &&
+                    curr.head.getTag() != Tag.LAMBDA) {
                 curr = curr.tail;
             }
-            JCMethodDecl method = (JCMethodDecl)curr.head;
-            return method.params.indexOf(param);
+            if (curr.head.getTag() == Tag.METHODDEF) {
+                JCMethodDecl method = (JCMethodDecl)curr.head;
+                return method.params.indexOf(param);
+            } else if (curr.head.getTag() == Tag.LAMBDA) {
+                JCLambda lambda = (JCLambda)curr.head;
+                return lambda.params.indexOf(param);
+            } else {
+                Assert.error("methodParamIndex expected to find method or lambda for param: " + param);
+                return -1;
+            }
         }
 
         // Each class (including enclosed inner classes) is visited separately.
         // This flag is used to prevent from visiting inner classes.
         private boolean isInClass = false;
 
-        // If we are visiting an anonymous class, we need to visit enclosed
-        // class declarations, as they are not visited otherwise.
-        private boolean isAnonClass = false;
-
         @Override
         public void visitClassDef(JCClassDecl tree) {
             if (isInClass)
                 return;
-            isInClass = !isAnonClass;
+            isInClass = true;
+
             if (sigOnly) {
                 scan(tree.mods);
                 scan(tree.typarams);
@@ -1054,6 +1029,40 @@ public class TypeAnnotations {
             pop();
         }
 
+        /* Store a reference to the current lambda expression, to
+         * be used by all type annotations within this expression.
+         */
+        private JCLambda currentLambda = null;
+
+        public void visitLambda(JCLambda tree) {
+            JCLambda prevLambda = currentLambda;
+            try {
+                currentLambda = tree;
+
+                int i = 0;
+                for (JCVariableDecl param : tree.params) {
+                    if (!param.mods.annotations.isEmpty()) {
+                        // Nothing to do for separateAnnotationsKinds if
+                        // there are no annotations of either kind.
+                        TypeAnnotationPosition pos = new TypeAnnotationPosition();
+                        pos.type = TargetType.METHOD_FORMAL_PARAMETER;
+                        pos.parameter_index = i;
+                        pos.pos = param.vartype.pos;
+                        pos.onLambda = tree;
+                        separateAnnotationsKinds(param.vartype, param.sym.type, param.sym, pos);
+                    }
+                    ++i;
+                }
+
+                push(tree);
+                scan(tree.body);
+                scan(tree.params);
+                pop();
+            } finally {
+                currentLambda = prevLambda;
+            }
+        }
+
         /**
          * Resolve declaration vs. type annotations in variable declarations and
          * then determine the positions.
@@ -1066,7 +1075,7 @@ public class TypeAnnotations {
             } else if (tree.sym == null) {
                 // Something is wrong already. Quietly ignore.
             } else if (tree.sym.getKind() == ElementKind.PARAMETER) {
-                // Parameters are handled in visitMethodDef above.
+                // Parameters are handled in visitMethodDef or visitLambda.
             } else if (tree.sym.getKind() == ElementKind.FIELD) {
                 if (sigOnly) {
                     TypeAnnotationPosition pos = new TypeAnnotationPosition();
@@ -1078,16 +1087,19 @@ public class TypeAnnotations {
                 TypeAnnotationPosition pos = new TypeAnnotationPosition();
                 pos.type = TargetType.LOCAL_VARIABLE;
                 pos.pos = tree.pos;
+                pos.onLambda = currentLambda;
                 separateAnnotationsKinds(tree.vartype, tree.sym.type, tree.sym, pos);
             } else if (tree.sym.getKind() == ElementKind.EXCEPTION_PARAMETER) {
                 TypeAnnotationPosition pos = new TypeAnnotationPosition();
                 pos.type = TargetType.EXCEPTION_PARAMETER;
                 pos.pos = tree.pos;
+                pos.onLambda = currentLambda;
                 separateAnnotationsKinds(tree.vartype, tree.sym.type, tree.sym, pos);
             } else if (tree.sym.getKind() == ElementKind.RESOURCE_VARIABLE) {
                 TypeAnnotationPosition pos = new TypeAnnotationPosition();
                 pos.type = TargetType.RESOURCE_VARIABLE;
                 pos.pos = tree.pos;
+                pos.onLambda = currentLambda;
                 separateAnnotationsKinds(tree.vartype, tree.sym.type, tree.sym, pos);
             } else if (tree.sym.getKind() == ElementKind.ENUM_CONSTANT) {
                 // No type annotations can occur here.
@@ -1159,12 +1171,6 @@ public class TypeAnnotations {
             scan(tree.clazz);
             scan(tree.args);
 
-            // Visit the class decl once with sigOnly true...
-            TypeAnnotationPositions tap = new TypeAnnotationPositions(syms, names, log, true);
-            // and noting that we are in an anonymous class.
-            tap.isAnonClass = true;
-            tap.scan(tree.def);
-            // Also visit the class decl with sigOnly false.
             scan(tree.def);
         }
 
@@ -1178,6 +1184,7 @@ public class TypeAnnotations {
             for (int i = 0; i < dimAnnosCount; ++i) {
                 TypeAnnotationPosition p = new TypeAnnotationPosition();
                 p.pos = tree.pos;
+                p.onLambda = currentLambda;
                 p.type = TargetType.NEW;
                 if (i != 0) {
                     depth = depth.append(TypePathEntry.ARRAY);
@@ -1197,6 +1204,7 @@ public class TypeAnnotations {
                     TypeAnnotationPosition p = new TypeAnnotationPosition();
                     p.type = TargetType.NEW;
                     p.pos = tree.pos;
+                    p.onLambda = currentLambda;
                     p.location = p.location.appendList(depth.toList());
                     setTypeAnnotationPos(at.annotations, p);
                     elemType = at.underlyingType;
@@ -1218,6 +1226,7 @@ public class TypeAnnotations {
                 System.out.println("    frame: " + frame + " kind: " + frame.getKind());
                 */
                 TypeAnnotationPosition p = new TypeAnnotationPosition();
+                p.onLambda = currentLambda;
                 resolveFrame(tree, frame, frames.toList(), p);
                 setTypeAnnotationPos(annotations, p);
             }

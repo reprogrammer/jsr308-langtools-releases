@@ -25,12 +25,12 @@
 package com.sun.tools.javac.comp;
 
 import com.sun.tools.javac.tree.*;
-import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.*;
 import com.sun.tools.javac.tree.JCTree.JCMemberReference.ReferenceKind;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.tree.TreeScanner;
 import com.sun.tools.javac.tree.TreeTranslator;
+import com.sun.tools.javac.code.Attribute;
 import com.sun.tools.javac.code.Kinds;
 import com.sun.tools.javac.code.Scope;
 import com.sun.tools.javac.code.Symbol;
@@ -40,13 +40,12 @@ import com.sun.tools.javac.code.Symbol.MethodSymbol;
 import com.sun.tools.javac.code.Symbol.VarSymbol;
 import com.sun.tools.javac.code.Symtab;
 import com.sun.tools.javac.code.Type;
-import com.sun.tools.javac.code.Type.ClassType;
 import com.sun.tools.javac.code.Type.MethodType;
 import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.comp.LambdaToMethod.LambdaAnalyzer.*;
+import com.sun.tools.javac.comp.Lower.BasicFreeVarCollector;
 import com.sun.tools.javac.jvm.*;
 import com.sun.tools.javac.util.*;
-import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
 import com.sun.source.tree.MemberReferenceTree.ReferenceMode;
 
@@ -70,6 +69,7 @@ import static com.sun.tools.javac.tree.JCTree.Tag.*;
  */
 public class LambdaToMethod extends TreeTranslator {
 
+    private Lower lower;
     private Names names;
     private Symtab syms;
     private Resolve rs;
@@ -147,6 +147,7 @@ public class LambdaToMethod extends TreeTranslator {
     }
 
     private LambdaToMethod(Context context) {
+        lower = Lower.instance(context);
         names = Names.instance(context);
         syms = Symtab.instance(context);
         rs = Resolve.instance(context);
@@ -235,6 +236,24 @@ public class LambdaToMethod extends TreeTranslator {
         LambdaTranslationContext localContext = (LambdaTranslationContext)context;
         MethodSymbol sym = (MethodSymbol)localContext.translatedSym;
         MethodType lambdaType = (MethodType) sym.type;
+
+        {
+            MethodSymbol owner = (MethodSymbol) localContext.owner;
+            ListBuffer<Attribute.TypeCompound> ownerTypeAnnos = new ListBuffer<Attribute.TypeCompound>();
+            ListBuffer<Attribute.TypeCompound> lambdaTypeAnnos = new ListBuffer<Attribute.TypeCompound>();
+
+            for (Attribute.TypeCompound tc : owner.getRawTypeAttributes()) {
+                if (tc.position.onLambda == tree) {
+                    lambdaTypeAnnos.append(tc);
+                } else {
+                    ownerTypeAnnos.append(tc);
+                }
+            }
+            if (lambdaTypeAnnos.nonEmpty()) {
+                owner.annotations.setTypeAttributes(ownerTypeAnnos.toList());
+                sym.annotations.setTypeAttributes(lambdaTypeAnnos.toList());
+            }
+        }
 
         //create the method declaration hoisting the lambda body
         JCMethodDecl lambdaDecl = make.MethodDef(make.Modifiers(sym.flags_field),
@@ -371,28 +390,19 @@ public class LambdaToMethod extends TreeTranslator {
             if (lambdaContext.getSymbolMap(PARAM).containsKey(tree.sym)) {
                 Symbol translatedSym = lambdaContext.getSymbolMap(PARAM).get(tree.sym);
                 result = make.Ident(translatedSym).setType(tree.type);
+                translatedSym.annotations.setTypeAttributes(tree.sym.getRawTypeAttributes());
             } else if (lambdaContext.getSymbolMap(LOCAL_VAR).containsKey(tree.sym)) {
                 Symbol translatedSym = lambdaContext.getSymbolMap(LOCAL_VAR).get(tree.sym);
                 result = make.Ident(translatedSym).setType(tree.type);
+                translatedSym.annotations.setTypeAttributes(tree.sym.getRawTypeAttributes());
             } else if (lambdaContext.getSymbolMap(TYPE_VAR).containsKey(tree.sym)) {
                 Symbol translatedSym = lambdaContext.getSymbolMap(TYPE_VAR).get(tree.sym);
                 result = make.Ident(translatedSym).setType(translatedSym.type);
+                translatedSym.annotations.setTypeAttributes(tree.sym.getRawTypeAttributes());
             } else if (lambdaContext.getSymbolMap(CAPTURED_VAR).containsKey(tree.sym)) {
                 Symbol translatedSym = lambdaContext.getSymbolMap(CAPTURED_VAR).get(tree.sym);
                 result = make.Ident(translatedSym).setType(tree.type);
             } else {
-                if (tree.sym.owner.kind == Kinds.TYP) {
-                    for (Map.Entry<Symbol, Symbol> encl_entry : lambdaContext.getSymbolMap(CAPTURED_THIS).entrySet()) {
-                        if (tree.sym.isMemberOf((ClassSymbol) encl_entry.getKey(), types)) {
-                            JCExpression enclRef = make.Ident(encl_entry.getValue());
-                            result = tree.sym.name == names._this
-                                    ? enclRef.setType(tree.type)
-                                    : make.Select(enclRef, tree.sym).setType(tree.type);
-                            result = tree;
-                            return;
-                        }
-                    }
-                }
                 //access to untranslated symbols (i.e. compile-time constants,
                 //members defined inside the lambda body, etc.) )
                 super.visitIdent(tree);
@@ -555,7 +565,7 @@ public class LambdaToMethod extends TreeTranslator {
         String functionalInterfaceClass = classSig(targetType);
         String functionalInterfaceMethodName = samSym.getSimpleName().toString();
         String functionalInterfaceMethodSignature = methodSig(types.erasure(samSym.type));
-        String implClass = classSig(refSym.owner.type);
+        String implClass = classSig(types.erasure(refSym.owner.type));
         String implMethodName = refSym.getQualifiedName().toString();
         String implMethodSignature = methodSig(types.erasure(refSym.type));
 
@@ -771,7 +781,7 @@ public class LambdaToMethod extends TreeTranslator {
                 //bridge method body generation - this can be either a method call or a
                 //new instance creation expression, depending on the member reference kind
                 JCExpression bridgeExpr = (tree.getMode() == ReferenceMode.INVOKE)
-                        ? bridgeExpressionInvoke(rcvr)
+                        ? bridgeExpressionInvoke(makeReceiver(rcvr))
                         : bridgeExpressionNew();
 
                 //the body is either a return expression containing a method call,
@@ -784,6 +794,16 @@ public class LambdaToMethod extends TreeTranslator {
                 make.at(prevPos);
             }
         }
+        //where
+            private JCExpression makeReceiver(VarSymbol rcvr) {
+                if (rcvr == null) return null;
+                JCExpression rcvrExpr = make.Ident(rcvr);
+                Type rcvrType = tree.sym.enclClass().type;
+                if (!rcvr.type.tsym.isSubClass(rcvrType.tsym, types)) {
+                    rcvrExpr = make.TypeCast(make.Type(rcvrType), rcvrExpr).setType(rcvrType);
+                }
+                return rcvrExpr;
+            }
 
         /**
          * determine the receiver of the bridged method call - the receiver can
@@ -791,12 +811,12 @@ public class LambdaToMethod extends TreeTranslator {
          * original qualifier expression is never used here, as it might refer
          * to symbols not available in the static context of the bridge
          */
-        private JCExpression bridgeExpressionInvoke(VarSymbol rcvr) {
+        private JCExpression bridgeExpressionInvoke(JCExpression rcvr) {
             JCExpression qualifier =
                     tree.sym.isStatic() ?
                         make.Type(tree.sym.owner.type) :
                         (rcvr != null) ?
-                            make.Ident(rcvr) :
+                            rcvr :
                             tree.getQualifierExpression();
 
             //create the qualifier expression
@@ -1006,14 +1026,14 @@ public class LambdaToMethod extends TreeTranslator {
             } else if (refSym.enclClass().isInterface()) {
                 return ClassFile.REF_invokeInterface;
             } else {
-                return ClassFile.REF_invokeVirtual;
+                return (refSym.flags() & PRIVATE) != 0 ?
+                        ClassFile.REF_invokeSpecial :
+                        ClassFile.REF_invokeVirtual;
             }
         }
     }
 
-    // </editor-fold>
-
-    // <editor-fold defaultstate="collapsed" desc="Lambda/reference analyzer">\
+    // <editor-fold defaultstate="collapsed" desc="Lambda/reference analyzer">
     /**
      * This visitor collects information about translation of a lambda expression.
      * More specifically, it keeps track of the enclosing contexts and captured locals
@@ -1037,6 +1057,8 @@ public class LambdaToMethod extends TreeTranslator {
         private Map<String, Integer> serializableLambdaCounts =
                 new HashMap<String, Integer>();
 
+        private Map<Symbol, JCClassDecl> localClassDefs;
+
         /**
          * maps for fake clinit symbols to be used as owners of lambda occurring in
          * a static var init context
@@ -1046,6 +1068,7 @@ public class LambdaToMethod extends TreeTranslator {
 
         private void analyzeClass(JCClassDecl tree) {
             frameStack = List.nil();
+            localClassDefs = new HashMap<Symbol, JCClassDecl>();
             scan(tree);
         }
 
@@ -1072,13 +1095,22 @@ public class LambdaToMethod extends TreeTranslator {
             try {
                 serializableLambdaCounts = new HashMap<String, Integer>();
                 prevClinits = new HashMap<ClassSymbol, Symbol>();
+                if (tree.sym.owner.kind == MTH) {
+                    localClassDefs.put(tree.sym, tree);
+                }
                 if (directlyEnclosingLambda() != null) {
                     tree.sym.owner = owner();
                     if (tree.sym.hasOuterInstance()) {
                         //if a class is defined within a lambda, the lambda must capture
                         //its enclosing instance (if any)
-                        ((LambdaTranslationContext) context())
-                                .addSymbol(tree.sym.type.getEnclosingType().tsym, CAPTURED_THIS);
+                        TranslationContext<?> localContext = context();
+                        while (localContext != null) {
+                            if (localContext.tree.getTag() == LAMBDA) {
+                                ((LambdaTranslationContext)localContext)
+                                        .addSymbol(tree.sym.type.getEnclosingType().tsym, CAPTURED_THIS);
+                            }
+                            localContext = localContext.prev;
+                        }
                     }
                 }
                 frameStack = frameStack.prepend(new Frame(tree));
@@ -1164,11 +1196,50 @@ public class LambdaToMethod extends TreeTranslator {
         @Override
         public void visitNewClass(JCNewClass tree) {
             if (lambdaNewClassFilter(context(), tree)) {
-                ((LambdaTranslationContext) context())
-                        .addSymbol(tree.type.getEnclosingType().tsym, CAPTURED_THIS);
+                TranslationContext<?> localContext = context();
+                while (localContext != null) {
+                    if (localContext.tree.getTag() == LAMBDA) {
+                        ((LambdaTranslationContext)localContext)
+                                .addSymbol(tree.type.getEnclosingType().tsym, CAPTURED_THIS);
+                    }
+                    localContext = localContext.prev;
+                }
+            }
+            if (context() != null && tree.type.tsym.owner.kind == MTH) {
+                LambdaTranslationContext lambdaContext = (LambdaTranslationContext)context();
+                captureLocalClassDefs(tree.type.tsym, lambdaContext);
             }
             super.visitNewClass(tree);
         }
+        //where
+            void captureLocalClassDefs(Symbol csym, final LambdaTranslationContext lambdaContext) {
+                JCClassDecl localCDef = localClassDefs.get(csym);
+                if (localCDef != null && localCDef.pos < lambdaContext.tree.pos) {
+                    BasicFreeVarCollector fvc = lower.new BasicFreeVarCollector() {
+                        @Override
+                        void addFreeVars(ClassSymbol c) {
+                            captureLocalClassDefs(c, lambdaContext);
+                        }
+                        @Override
+                        void visitSymbol(Symbol sym) {
+                            if (sym.kind == VAR &&
+                                    sym.owner.kind == MTH &&
+                                    ((VarSymbol)sym).getConstValue() == null) {
+                                TranslationContext<?> localContext = context();
+                                while (localContext != null) {
+                                    if (localContext.tree.getTag() == LAMBDA) {
+                                        JCTree block = capturedDecl(localContext.depth, sym);
+                                        if (block == null) break;
+                                        ((LambdaTranslationContext)localContext).addSymbol(sym, CAPTURED_VAR);
+                                    }
+                                    localContext = localContext.prev;
+                                }
+                            }
+                        }
+                    };
+                    fvc.scan(localCDef);
+                }
+            }
 
         @Override
         public void visitReference(JCMemberReference tree) {
@@ -1229,14 +1300,36 @@ public class LambdaToMethod extends TreeTranslator {
             return names.lambda.append(names.fromString("" + lambdaCount++));
         }
 
+        /**
+         * For a serializable lambda, generate a name which maximizes name
+         * stability across deserialization.
+         * @param owner
+         * @return Name to use for the synthetic lambda method name
+         */
         private Name serializedLambdaName(Symbol owner) {
             StringBuilder buf = new StringBuilder();
             buf.append(names.lambda);
-            buf.append(owner.name);
+            // Append the name of the method enclosing the lambda.
+            String methodName = owner.name.toString();
+            if (methodName.equals("<clinit>"))
+                methodName = "static";
+            else if (methodName.equals("<init>"))
+                methodName = "new";
+            buf.append(methodName);
             buf.append('$');
-            int methTypeHash = methodSig(owner.type).hashCode();
-            buf.append(methTypeHash);
+            // Append a hash of the enclosing method signature to differentiate
+            // overloaded enclosing methods.  For lambdas enclosed in lambdas,
+            // the generated lambda method will not have type yet, but the
+            // enclosing method's name will have been generated with this same
+            // method, so it will be unique and never be overloaded.
+            Assert.check(owner.type != null || directlyEnclosingLambda() != null);
+            if (owner.type != null) {
+                int methTypeHash = methodSig(owner.type).hashCode();
+                buf.append(Integer.toHexString(methTypeHash));
+            }
             buf.append('$');
+            // The above appended name components may not be unique, append a
+            // count based on the above name components.
             String temp = buf.toString();
             Integer count = serializableLambdaCounts.get(temp);
             if (count == null) {
@@ -1550,42 +1643,59 @@ public class LambdaToMethod extends TreeTranslator {
              * Translate a symbol of a given kind into something suitable for the
              * synthetic lambda body
              */
-            Symbol translate(String name, Symbol sym, LambdaSymbolKind skind) {
+            Symbol translate(Name name, final Symbol sym, LambdaSymbolKind skind) {
+                Symbol ret;
                 switch (skind) {
                     case CAPTURED_THIS:
-                        return sym;  // self represented
+                        ret = sym;  // self represented
+                        break;
                     case TYPE_VAR:
                         // Just erase the type var
-                        return new VarSymbol(sym.flags(), names.fromString(name),
+                        ret = new VarSymbol(sym.flags(), name,
                                 types.erasure(sym.type), sym.owner);
+                        break;
+                    case CAPTURED_VAR:
+                        ret = new VarSymbol(SYNTHETIC | FINAL, name, types.erasure(sym.type), translatedSym) {
+                            @Override
+                            public Symbol baseSymbol() {
+                                //keep mapping with original captured symbol
+                                return sym;
+                            }
+                        };
+                        break;
                     default:
-                        return makeSyntheticVar(FINAL, name, types.erasure(sym.type), translatedSym);
+                        ret = makeSyntheticVar(FINAL, name, types.erasure(sym.type), translatedSym);
                 }
+                if (ret != sym) {
+                    ret.annotations.setDeclarationAttributes(sym.getRawAttributes());
+                    ret.annotations.setTypeAttributes(sym.getRawTypeAttributes());
+                }
+                return ret;
             }
 
             void addSymbol(Symbol sym, LambdaSymbolKind skind) {
                 Map<Symbol, Symbol> transMap = null;
-                String preferredName;
+                Name preferredName;
                 switch (skind) {
                     case CAPTURED_THIS:
                         transMap = capturedThis;
-                        preferredName = "encl$" + capturedThis.size();
+                        preferredName = names.fromString("encl$" + capturedThis.size());
                         break;
                     case CAPTURED_VAR:
                         transMap = capturedLocals;
-                        preferredName = "cap$" + capturedLocals.size();
+                        preferredName = names.fromString("cap$" + capturedLocals.size());
                         break;
                     case LOCAL_VAR:
                         transMap = lambdaLocals;
-                        preferredName = sym.name.toString();
+                        preferredName = sym.name;
                         break;
                     case PARAM:
                         transMap = lambdaParams;
-                        preferredName = sym.name.toString();
+                        preferredName = sym.name;
                         break;
                     case TYPE_VAR:
                         transMap = typeVars;
-                        preferredName = sym.name.toString();
+                        preferredName = sym.name;
                         break;
                     default: throw new AssertionError();
                 }
@@ -1703,8 +1813,17 @@ public class LambdaToMethod extends TreeTranslator {
             }
 
             boolean isPrivateConstructor() {
+                //hack needed to workaround 292 bug (8005122)
+                //when 292 issue is fixed we should simply remove this
                 return tree.sym.name == names.init &&
                         (tree.sym.flags() & PRIVATE) != 0;
+            }
+
+            boolean receiverAccessible() {
+                //hack needed to workaround 292 bug (7087658)
+                //when 292 issue is fixed we should remove this and change the backend
+                //code to always generate a method handle to an accessible method
+                return tree.ownerAccessible;
             }
 
             /**
@@ -1712,7 +1831,8 @@ public class LambdaToMethod extends TreeTranslator {
              * expanded or "super" is used)
              */
             final boolean needsBridge() {
-                return isSuper || needsVarArgsConversion() || isArrayOp() || isPrivateConstructor();
+                return isSuper || needsVarArgsConversion() || isArrayOp() ||
+                        isPrivateConstructor() || !receiverAccessible();
             }
 
             Type generatedRefSig() {

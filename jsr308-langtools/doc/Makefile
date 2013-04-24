@@ -41,8 +41,8 @@ validate:
 webpage: ${jsr308_www}/jsr308-webpage.html ${jsr308_www}/jsr308-faq.html
 #	$(MAKE) checklinks
 
-# Warning!  "make web" makes a public release!
-web: \
+# Warning!  "make web" makes a public release if you do not override jsr308_www!
+web-no-checks: \
 ${jsr308_www} \
 ${jsr308_www}/jsr308-webpage.html \
 ${jsr308_www}/jsr308-faq.html \
@@ -52,6 +52,8 @@ ${jsr308_www}/changelog-jsr308.txt \
 ${jsr308_www}/favicon-jsr308.png \
 ${jsr308_www}/java-type-qualifiers.pdf \
 ${jsr308_www}/java-type-qualifiers.html
+
+web: web-no-checks
 	$(MAKE) checklinks
 
 # Make a release of the specification.
@@ -139,9 +141,14 @@ design.pdf: design.tex design.dvi
 
 design.html: design.tex design.dvi design.bbl
 	hevea -fix -exec xxdate.exe urlhref.hva design.tex
+# Next 3 lines are necessary only with Hevea before 2.04
 	mv design.html design.html-with-htoc
 	hevea-retarget-crossrefs < design.html-with-htoc > design.html
-	rm -rf design.html-with-htoc
+	rm -f design.html-with-htoc
+# Next 3 lines deal with Hevea's inability to process line numbers when using fancyvrb package
+	mv design.html design.html-without-verbatim-linerefs
+	hevea-add-verbatim-linenos design.aux design.html-without-verbatim-linerefs > design.html
+	rm -f design.html-without-verbatim-linerefs
 #	perl -pi -e 's/(be as clear.<\/P><OL )/$$1start="5" /' design.html
 #	perl -pi -e 's/(<!--TOC section Introduction-->)/$$1\n\n<p>Contents:<\/p>\n<!-- start toc.  do not edit; run html-update-toc instead -->\n<!-- end toc -->\n\n<br>\n/' design.html
 #	html-update-toc design.html
@@ -158,13 +165,14 @@ ${jsr308_spec}/java-annotation-design.pdf: design.pdf ${jsr308_spec} ${PLUME_BIN
 
 ${jsr308_spec}/java-annotation-design.html: design.html ${jsr308_spec} ${PLUME_BIN}
 	\cp -f $< $@
-# We don't know which of the two files will be created
-	-\cp -f design001.gif ${jsr308_spec}
-	-\cp -f design001.png ${jsr308_spec}
-	-\cp -f design002.gif ${jsr308_spec}
-	-\cp -f design002.png ${jsr308_spec}
-	-\cp -f design003.gif ${jsr308_spec}
-	-\cp -f design003.png ${jsr308_spec}
+# We don't know which of the two files will be created (.gif or .png), so
+# copy both just to be safe.
+	if [ -a design001.gif ]; then cp design001.gif ${jsr308_spec}; fi;
+	if [ -a design001.png ]; then cp design001.png ${jsr308_spec}; fi;
+	if [ -a design002.gif ]; then cp design002.gif ${jsr308_spec}; fi;
+	if [ -a design002.png ]; then cp design002.png ${jsr308_spec}; fi;
+	if [ -a design003.gif ]; then cp design003.gif ${jsr308_spec}; fi;
+	if [ -a design003.png ]; then cp design003.png ${jsr308_spec}; fi;
 	cd ${jsr308_www}; ${PLUME_BIN}/html-update-link-dates jsr308-webpage.html
 
 ###########################################################################
