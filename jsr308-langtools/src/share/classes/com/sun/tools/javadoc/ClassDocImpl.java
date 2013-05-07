@@ -108,6 +108,10 @@ public class ClassDocImpl extends ProgramElementDocImpl implements ClassDoc {
         this.tsym = sym;
     }
 
+    public com.sun.javadoc.Type getElementType() {
+        return null;
+    }
+
     /**
      * Returns the flags in terms of javac's flags
      */
@@ -337,8 +341,13 @@ public class ClassDocImpl extends ProgramElementDocImpl implements ClassDoc {
      * </pre>
      */
     public String name() {
-        return getClassName(tsym, false);
+        if (name == null) {
+            name = getClassName(tsym, false);
+        }
+        return name;
     }
+
+    private String name;
 
     /**
      * Return the qualified class name as a String.
@@ -350,8 +359,13 @@ public class ClassDocImpl extends ProgramElementDocImpl implements ClassDoc {
      * </pre>
      */
     public String qualifiedName() {
-        return getClassName(tsym, true);
+        if (qualifiedName == null) {
+            qualifiedName = getClassName(tsym, true);
+        }
+        return qualifiedName;
     }
+
+    private String qualifiedName;
 
     /**
      * Return unqualified name of type excluding any dimension information.
@@ -376,8 +390,13 @@ public class ClassDocImpl extends ProgramElementDocImpl implements ClassDoc {
      * Return the simple name of this type.
      */
     public String simpleTypeName() {
-        return tsym.name.toString();
+        if (simpleTypeName == null) {
+            simpleTypeName = tsym.name.toString();
+        }
+        return simpleTypeName;
     }
+
+    private String simpleTypeName;
 
     /**
      * Return the qualified name and any type parameters.

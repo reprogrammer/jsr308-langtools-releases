@@ -54,6 +54,7 @@ import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.code.Lint.LintCategory;
 import com.sun.tools.javac.code.Symbol.*;
 import com.sun.tools.javac.comp.*;
+import com.sun.tools.javac.comp.CompileStates.CompileState;
 import com.sun.tools.javac.file.JavacFileManager;
 import com.sun.tools.javac.jvm.*;
 import com.sun.tools.javac.parser.*;
@@ -326,13 +327,11 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
      **/
     protected boolean implicitSourceFilesRead;
 
-    private static int uidCounter = 0;
-    private final int uid;
+    protected CompileStates compileStates;
 
     /** Construct a new compiler using a shared context.
      */
-    public JavaCompiler(final Context context) {
-        uid = ++uidCounter;
+    public JavaCompiler(Context context) {
         this.context = context;
         context.put(compilerKey, this);
 
@@ -352,6 +351,7 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
 
         fileManager = context.get(JavaFileManager.class);
         parserFactory = ParserFactory.instance(context);
+        compileStates = CompileStates.instance(context);
 
         try {
             // catch completion problems with predefineds
@@ -483,7 +483,7 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
      */
     protected boolean werror;
 
-    /** Switch: is annotation processing requested explitly via
+    /** Switch: is annotation processing requested explicitly via
      * CompilationTask.setProcessors?
      */
     protected boolean explicitAnnotationProcessingRequested = false;
@@ -524,42 +524,6 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
     /** A list of items to be closed when the compilation is complete.
      */
     public List<Closeable> closeables = List.nil();
-
-    /** Ordered list of compiler phases for each compilation unit. */
-    public enum CompileState {
-        INIT(0),
-        PARSE(1),
-        ENTER(2),
-        PROCESS(3),
-        ATTR(4),
-        FLOW(5),
-        TRANSTYPES(6),
-        UNLAMBDA(7),
-        LOWER(8),
-        GENERATE(9);
-
-        CompileState(int value) {
-            this.value = value;
-        }
-        boolean isAfter(CompileState other) {
-            return value > other.value;
-        }
-        public static CompileState max(CompileState a, CompileState b) {
-            return a.value > b.value ? a : b;
-        }
-        private final int value;
-    };
-    /** Partial map to record which compiler phases have been executed
-     * for each compilation unit. Used for ATTR and FLOW phases.
-     */
-    protected class CompileStates extends HashMap<Env<AttrContext>,CompileState> {
-        private static final long serialVersionUID = 1812267524140424433L;
-        boolean isDone(Env<AttrContext> env, CompileState cs) {
-            CompileState ecs = get(env);
-            return (ecs != null) && !cs.isAfter(ecs);
-        }
-    }
-    private CompileStates compileStates = new CompileStates();
 
     /** The set of currently compiled inputfiles, needed to ensure
      *  we don't accidentally overwrite an input file when -s is set.
@@ -1399,13 +1363,17 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
             @Override
             public void visitClassDef(JCClassDecl node) {
                 Type st = types.supertype(node.sym.type);
-                if (st.hasTag(CLASS)) {
+                boolean envForSuperTypeFound = false;
+                while (!envForSuperTypeFound && st.hasTag(CLASS)) {
                     ClassSymbol c = st.tsym.outermostClass();
                     Env<AttrContext> stEnv = enter.getEnv(c);
                     if (stEnv != null && env != stEnv) {
-                        if (dependencies.add(stEnv))
+                        if (dependencies.add(stEnv)) {
                             scan(stEnv.tree);
+                        }
+                        envForSuperTypeFound = true;
                     }
+                    st = types.supertype(st);
                 }
                 super.visitClassDef(node);
             }
@@ -1745,27 +1713,4 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
        }
 
     }
-
-    @Override
-    public String toString() {
-        return "JavaCompiler#" + uid;
-    }
-
-    public String dump(String varname) {
-        return dump(varname, "");
-    }
-
-    public String dump(String varname, String indent) {
-        StringBuilder sb = new StringBuilder();
-        dump(varname, indent, sb);
-        return sb.toString();
-    }
-
-    public void dump(String varname, String indent, StringBuilder sb) {
-        sb.append(String.format("%s%s = %s%n", indent, varname, this));
-        sb.append(String.format("%s  enter = %s%n", indent, enter));
-        sb.append(String.format("%s  context = %s%n", indent, context));
-        sb.append(String.format("%s  procEnvImpl = %s%n", indent, procEnvImpl));
-    }
-
 }

@@ -309,7 +309,15 @@ public class Gen extends JCTree.Visitor {
      */
     int makeRef(DiagnosticPosition pos, Type type) {
         checkDimension(pos, type);
-        return pool.put(type.hasTag(CLASS) ? (Object)type.tsym : (Object)type);
+        if (type.isAnnotated()) {
+            // Treat annotated types separately - we don't want
+            // to collapse all of them - at least for annotated
+            // exceptions.
+            // TODO: review this.
+            return pool.put((Object)type);
+        } else {
+            return pool.put(type.hasTag(CLASS) ? (Object)type.tsym : (Object)type);
+        }
     }
 
     /** Check if the given type is an array with too many dimensions.
@@ -531,7 +539,10 @@ public class Gen extends JCTree.Visitor {
             JCBlock block = make.at(clinitStats.head.pos()).Block(0, clinitStats);
             block.endpos = TreeInfo.endPos(clinitStats.last());
             methodDefs.append(make.MethodDef(clinit, block));
+
+            if (!clinitTAs.isEmpty())
             clinit.annotations.appendUniqueTypes(clinitTAs.toList());
+            if (!c.clinit_type_annotations.isEmpty())
             clinit.annotations.appendUniqueTypes(c.clinit_type_annotations);
         }
         // Return all method definitions.
@@ -1554,6 +1565,11 @@ public class Gen extends JCTree.Visitor {
                         registerCatch(tree.pos(),
                                       startpc,  end, code.curPc(),
                                       catchType);
+                        if (subCatch.type.isAnnotated()) {
+                            // All compounds share the same position, simply update the
+                            // first one.
+                            subCatch.type.getAnnotationMirrors().head.position.type_index = catchType;
+                        }
                     }
                     gaps = gaps.tail;
                     startpc = gaps.head.intValue();
@@ -1565,6 +1581,11 @@ public class Gen extends JCTree.Visitor {
                         registerCatch(tree.pos(),
                                       startpc, endpc, code.curPc(),
                                       catchType);
+                        if (subCatch.type.isAnnotated()) {
+                            // All compounds share the same position, simply update the
+                            // first one.
+                            subCatch.type.getAnnotationMirrors().head.position.type_index = catchType;
+                        }
                     }
                 }
                 VarSymbol exparam = tree.param.sym;
@@ -1775,10 +1796,13 @@ public class Gen extends JCTree.Visitor {
         // Generate code for all arguments, where the expected types are
         // the parameters of the method's external type (that is, any implicit
         // outer instance of a super(...) call appears as first parameter).
+        MethodSymbol msym = (MethodSymbol)TreeInfo.symbol(tree.meth);
         genArgs(tree.args,
-                TreeInfo.symbol(tree.meth).externalType(types).getParameterTypes());
-        code.statBegin(tree.pos);
-        code.markStatBegin();
+                msym.externalType(types).getParameterTypes());
+        if (!msym.isDynamic()) {
+            code.statBegin(tree.pos);
+            code.markStatBegin();
+        }
         result = m.invoke();
     }
 
@@ -1807,42 +1831,44 @@ public class Gen extends JCTree.Visitor {
         result = items.makeStackItem(pt);
     }
 
-   private void setTypeAnnotationPositions(int treePos) {
-       MethodSymbol meth = code.meth;
+    private void setTypeAnnotationPositions(int treePos) {
+        MethodSymbol meth = code.meth;
+        boolean initOrClinit = code.meth.getKind() == javax.lang.model.element.ElementKind.CONSTRUCTOR
+                || code.meth.getKind() == javax.lang.model.element.ElementKind.STATIC_INIT;
 
-       for (Attribute.TypeCompound ta : meth.getRawTypeAttributes()) {
-           if (ta.position.pos == treePos) {
-               ta.position.offset = code.cp;
-               ta.position.lvarOffset = new int[] { code.cp };
-               ta.position.isValidOffset = true;
-           }
-       }
+        for (Attribute.TypeCompound ta : meth.getRawTypeAttributes()) {
+            if (ta.hasUnknownPosition())
+                ta.tryFixPosition();
 
-       if (code.meth.getKind() != javax.lang.model.element.ElementKind.CONSTRUCTOR
-               && code.meth.getKind() != javax.lang.model.element.ElementKind.STATIC_INIT)
-           return;
+            if (ta.position.matchesPos(treePos))
+                ta.position.updatePosOffset(code.cp);
+        }
 
-       for (Attribute.TypeCompound ta : meth.owner.getRawTypeAttributes()) {
-           if (ta.position.pos == treePos) {
-               ta.position.offset = code.cp;
-               ta.position.lvarOffset = new int[] { code.cp };
-               ta.position.isValidOffset = true;
-           }
-       }
+        if (!initOrClinit)
+            return;
 
-       ClassSymbol clazz = meth.enclClass();
-       for (Symbol s : new com.sun.tools.javac.model.FilteredMemberList(clazz.members())) {
-           if (!s.getKind().isField())
-               continue;
-           for (Attribute.TypeCompound ta : s.getRawTypeAttributes()) {
-               if (ta.position.pos == treePos) {
-                   ta.position.offset = code.cp;
-                   ta.position.lvarOffset = new int[] { code.cp };
-                   ta.position.isValidOffset = true;
-               }
-           }
-       }
-   }
+        for (Attribute.TypeCompound ta : meth.owner.getRawTypeAttributes()) {
+            if (ta.hasUnknownPosition())
+                ta.tryFixPosition();
+
+            if (ta.position.matchesPos(treePos))
+                ta.position.updatePosOffset(code.cp);
+        }
+
+        ClassSymbol clazz = meth.enclClass();
+        for (Symbol s : new com.sun.tools.javac.model.FilteredMemberList(clazz.members())) {
+            if (!s.getKind().isField())
+                continue;
+
+            for (Attribute.TypeCompound ta : s.getRawTypeAttributes()) {
+                if (ta.hasUnknownPosition())
+                    ta.tryFixPosition();
+
+                if (ta.position.matchesPos(treePos))
+                    ta.position.updatePosOffset(code.cp);
+            }
+        }
+    }
 
     public void visitNewClass(JCNewClass tree) {
         // Enclosing instances or anonymous classes should have been eliminated

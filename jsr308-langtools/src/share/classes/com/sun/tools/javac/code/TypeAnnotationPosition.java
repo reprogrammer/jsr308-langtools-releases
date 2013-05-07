@@ -146,7 +146,11 @@ public class TypeAnnotationPosition {
     // For class extends, implements, and throws clauses
     public int type_index = Integer.MIN_VALUE;
 
-    // For exception parameters, index into exception table
+    // For exception parameters, index into exception table.
+    // In com.sun.tools.javac.jvm.Gen.genCatch we first set the type_index
+    // to the catch type index - that value is only temporary.
+    // Then in com.sun.tools.javac.jvm.Code.fillExceptionParameterPositions
+    // we use that value to determine the exception table index.
     public int exception_index = Integer.MIN_VALUE;
 
     // If this type annotation is within a lambda expression,
@@ -280,6 +284,17 @@ public class TypeAnnotationPosition {
      */
     public boolean emitToClassfile() {
         return !type.isLocal() || isValidOffset;
+    }
+
+
+    public boolean matchesPos(int pos) {
+        return this.pos == pos;
+    }
+
+    public void updatePosOffset(int to) {
+        offset = to;
+        lvarOffset = new int[]{to};
+        isValidOffset = true;
     }
 
     /**

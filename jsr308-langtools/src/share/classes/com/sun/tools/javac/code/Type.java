@@ -915,6 +915,12 @@ public class Type implements PrimitiveType {
             return interfaces_field.prepend(supertype_field);
         }
 
+        public List<Type> getExplicitComponents() {
+            return allInterfaces ?
+                    interfaces_field :
+                    getComponents();
+        }
+
         @Override
         public TypeKind getKind() {
             return TypeKind.INTERSECTION;
@@ -1146,7 +1152,7 @@ public class Type implements PrimitiveType {
 
         public TypeVar(Name name, Symbol owner, Type lower) {
             super(TYPEVAR, null);
-            tsym = new TypeSymbol(0, name, this, owner);
+            tsym = new TypeVariableSymbol(0, name, this, owner);
             this.lower = lower;
         }
 

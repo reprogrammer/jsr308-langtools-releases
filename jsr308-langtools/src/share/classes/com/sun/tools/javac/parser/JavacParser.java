@@ -171,8 +171,8 @@ public class JavacParser implements Parser {
 
     protected AbstractEndPosTable newEndPosTable(boolean keepEndPositions) {
         return  keepEndPositions
-                ? new SimpleEndPosTable()
-                : new EmptyEndPosTable();
+                ? new SimpleEndPosTable(this)
+                : new EmptyEndPosTable(this);
     }
 
     protected DocCommentTable newDocCommentTable(boolean keepDocComments, ParserFactory fac) {
@@ -3128,6 +3128,7 @@ public class JavacParser implements Parser {
             toplevel.docComments = docComments;
         if (keepLineMap)
             toplevel.lineMap = S.getLineMap();
+        this.endPosTable.setParser(null); // remove reference to parser
         toplevel.endPositions = this.endPosTable;
         return toplevel;
     }
@@ -3601,18 +3602,24 @@ public class JavacParser implements Parser {
         ListBuffer<JCExpression> ts = new ListBuffer<JCExpression>();
 
         List<JCAnnotation> typeAnnos = typeAnnotationsOpt();
-        if (!typeAnnos.isEmpty())
-            ts.append(toP(F.at(typeAnnos.head.pos).AnnotatedType(typeAnnos, qualident(true))));
-        else
-            ts.append(qualident(true));
+        JCExpression qi = qualident(true);
+        if (!typeAnnos.isEmpty()) {
+            JCExpression at = insertAnnotationsToMostInner(qi, typeAnnos, false);
+            ts.append(at);
+        } else {
+            ts.append(qi);
+        }
         while (token.kind == COMMA) {
             nextToken();
 
             typeAnnos = typeAnnotationsOpt();
-            if (!typeAnnos.isEmpty())
-                ts.append(toP(F.at(typeAnnos.head.pos).AnnotatedType(typeAnnos, qualident(true))));
-            else
-                ts.append(qualident(true));
+            qi = qualident(true);
+            if (!typeAnnos.isEmpty()) {
+                JCExpression at = insertAnnotationsToMostInner(qi, typeAnnos, false);
+                ts.append(at);
+            } else {
+                ts.append(qi);
+            }
         }
         return ts.toList();
     }
@@ -4079,11 +4086,12 @@ public class JavacParser implements Parser {
     /*
      * a functional source tree and end position mappings
      */
-    protected class SimpleEndPosTable extends AbstractEndPosTable {
+    protected static class SimpleEndPosTable extends AbstractEndPosTable {
 
         private final Map<JCTree, Integer> endPosMap;
 
-        SimpleEndPosTable() {
+        SimpleEndPosTable(JavacParser parser) {
+            super(parser);
             endPosMap = new HashMap<JCTree, Integer>();
         }
 
@@ -4092,12 +4100,12 @@ public class JavacParser implements Parser {
         }
 
         protected <T extends JCTree> T to(T t) {
-            storeEnd(t, token.endPos);
+            storeEnd(t, parser.token.endPos);
             return t;
         }
 
         protected <T extends JCTree> T toP(T t) {
-            storeEnd(t, S.prevToken().endPos);
+            storeEnd(t, parser.S.prevToken().endPos);
             return t;
         }
 
@@ -4119,7 +4127,11 @@ public class JavacParser implements Parser {
     /*
      * a default skeletal implementation without any mapping overhead.
      */
-    protected class EmptyEndPosTable extends AbstractEndPosTable {
+    protected static class EmptyEndPosTable extends AbstractEndPosTable {
+
+        EmptyEndPosTable(JavacParser parser) {
+            super(parser);
+        }
 
         protected void storeEnd(JCTree tree, int endpos) { /* empty */ }
 
@@ -4141,12 +4153,20 @@ public class JavacParser implements Parser {
 
     }
 
-    protected abstract class AbstractEndPosTable implements EndPosTable {
+    protected static abstract class AbstractEndPosTable implements EndPosTable {
+        /**
+         * The current parser.
+         */
+        protected JavacParser parser;
 
         /**
          * Store the last error position.
          */
         protected int errorEndPos;
+
+        public AbstractEndPosTable(JavacParser parser) {
+            this.parser = parser;
+        }
 
         /**
          * Store ending position for a tree, the value of which is the greater
@@ -4181,6 +4201,10 @@ public class JavacParser implements Parser {
             if (errPos > errorEndPos) {
                 errorEndPos = errPos;
             }
+        }
+
+        protected void setParser(JavacParser parser) {
+            this.parser = parser;
         }
     }
 }

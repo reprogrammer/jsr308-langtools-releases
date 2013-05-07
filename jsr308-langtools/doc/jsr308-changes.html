@@ -31,6 +31,43 @@ The current development version of the specification is available in the
 <!-- See Makefile for documentation of how to compute a new changelog entry.
 -->
 
+  <dt><a href="java-annotation-design-20130501.html">1 May 2013</a></dt>
+  <dd>
+    Grammar changes:
+    <ul>
+      <li>
+	Refactor JLS grammar to clarify that throws and catch clauses
+        contain type uses that can be annotated, even though
+	type parameters and arrays are forbidden in such locations.  See
+	the productions for <em>QualifiedType</em>,
+	<em>UnannQualifiedType</em>, and <em>QualifiedTypeList</em>.
+      </li>
+    </ul>
+
+    Classfile changes:
+    <ul>
+      <li>
+        Remove unused target_info <tt>method_reference_target</tt>.
+      </li>
+    </ul>
+
+    Clarifications:
+    <ul>
+      <li>
+        Give examples of interaction between multiple <tt>@Target</tt>
+        meta-annotations and fully-qualified type names.
+      </li>
+      <li>
+        Explain why instanceof uses <tt>offset_target</tt> but cast uses
+        <tt>type_argument_target</tt>.
+      </li>
+      <li>
+        Move examples of classfile annotations, which are not normative,
+        into an appendix so that Section 3 contains only normative text.
+      </li>
+    </ul>
+  </dd>
+
   <dt><a href="java-annotation-design-20130401.html">1 April 2013</a></dt>
   <dd>
     Grammar changes:
@@ -39,6 +76,13 @@ The current development version of the specification is available in the
         Add missing modified grammar productions for
         <em>AnnotationTypeElementRest</em> and
         <em>LocalVariableDeclarationStatement</em>.
+      </li>
+    </ul>
+
+    Classfile changes:
+    <ul>
+      <li>
+        Fix bug in <tt>type_path_entry</tt> struct definition comments.
       </li>
     </ul>
 

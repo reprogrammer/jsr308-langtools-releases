@@ -1,3 +1,5 @@
+% If you edit this file, also edit file jsr308-changes.html
+
 \documentclass[10pt]{article}
 \usepackage{pslatex}
 \usepackage{fancyvrb}
@@ -67,6 +69,7 @@
 \hyphenation{Pecht-chan-ski}
 
 \urldef{\jlsEightEightFour}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-8.html#jls-8.8.4}
+\urldef{\jlsFourteenTwenty}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-14.html#jls-14.20}
 \urldef{\jlsFifteenEightThree}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-15.html#jls-15.8.3}
 \urldef{\jlsFifteenEightFour}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-15.html#jls-15.8.4}
 \urldef{\jlsFifteenNine}\url{http://docs.oracle.com/javase/specs/jls/se7/html/jls-15.html#jls-15.9}
@@ -100,8 +103,10 @@ Such a generalization removes
 limitations of Java's annotation
 system, and it enables new uses of annotations.
 
-This document specifies the \emph{syntax} of extended Java annotations, but
-it makes no commitment as to their \emph{semantics}.  As with Java's
+This document specifies the \emph{syntax} of extended Java annotations in
+Java source code and how those annotations are represented in classfiles.
+However, this document makes no commitment as to the \emph{semantics} of any
+particular annotation type.  As with Java's
 existing annotations~\cite{JSR175}, the semantics is dependent on annotation processors
 (compiler plug-ins), and not every annotation is necessarily sensible in
 every location where it is syntactically permitted to appear.
@@ -241,6 +246,7 @@ annotation follows the explicit type arguments (JLS
 \preverbnegspace
 \begin{Verbatim}
   myString = (@NonNull String) myObject;
+  x = (@A Type1 & @B Type2) y;
 \end{Verbatim}
 \preverbnegspace
 It is not permitted to omit the Java type, as in
@@ -684,10 +690,10 @@ the rules of Section~\ref{type-annotation-locations}.
 Additions are \underline{underlined}.
 % , and deletions \sout{crossed out}.
 
-Infelicities in the Java grammar make this section somewhat long.
-Some improvements are
-possible (for instance, by slightly refactoring the Java grammar), but this
-version attempts to minimize changes to existing grammar productions.
+% Infelicities in the Java grammar make this section somewhat long.
+% Some improvements are
+% possible (for instance, by slightly refactoring the Java grammar), but this
+% version attempts to minimize changes to existing grammar productions.
 
 
 % The original grammar appears at
@@ -711,6 +717,8 @@ version attempts to minimize changes to existing grammar productions.
 
 \begin{enumerate}
 \item
+\begin{enumerate}
+\item
 Any \nt{Type} may be prefixed by \opt{\nt{Annotations}}:
 
 \begin{tabbing}
@@ -729,7 +737,7 @@ Any \nt{Type} may be prefixed by \opt{\nt{Annotations}}:
 \qquad       \nt{\new{Unann}Type} \nt{Identifier} \nt{InterfaceMethodOrFieldRest} \\
 \\
 \nt{LocalVariableDeclarationStatement}: \\
-\qquad        \multi{\nt{VariableModifier}} \nt{\new{Unann}Type} \nt{VariableDeclarators} \term{;}
+\qquad        \multi{\nt{VariableModifier}} \nt{\new{Unann}Type} \nt{VariableDeclarators} \term{;} \\
 \\
 \nt{Resource}: \\
 \qquad        \multi{\nt{VariableModifier}} \nt{\new{Unann}ReferenceType} \nt{VariableDeclaratorId} \term{=} \nt{Expression} \\
@@ -740,9 +748,6 @@ Any \nt{Type} may be prefixed by \opt{\nt{Annotations}}:
 \nt{AnnotationTypeElementRest}: \\
 \qquad       \nt{\new{Unann}Type} \nt{Identifier} \nt{AnnotationMethodOrConstantRest} \term{;} \\
 \qquad       \ldots \\
-\\
-\new{\nt{QualifiedTypeList}}: \\
-\qquad        \new{\opt{\nt{Annotations}}} \nt{UnannReferenceType} \multi{ \term{,}   \new{\opt{\nt{Annotations}}} \nt{UnannReferenceType} }
 \end{tabbing}
 
 % \nt{QualifiedTypeList} was \nt{QualifiedIdentifierList} in the Java SE 7
@@ -768,8 +773,69 @@ Any \nt{Type} may be prefixed by \opt{\nt{Annotations}}:
 %     FormalParameterDecls:
 %             [final] Type FormalParameterDeclsRest]
 
+\item
+Annotations can be written on a non-parameterized, non-array type as used
+in a \<throws> clause, or \<catch> clause.
+% but NOT in annotation (\<@\emph{Foo}>)!
+The JLS grammar uses \nt{QualifiedIdentifer} in such places, but the
+grammar also uses \nt{QualifiedIdentifer} in \<package> statements, where
+it is non-annotatable.  This is confusing, so we refactor the grammar to
+make the non-terminal names and the rules more uniform.  With these
+changes, it it possible to eliminate the \nt{QualifiedIdentiferList}
+grammar production, which is no longer used.
+
+\label{sec:qualified-type-list}
+
+\begin{tabbing}
+\qquad \= \kill
+\new{\nt{QualifiedType}}: \\
+\qquad        \new{\opt{\nt{Annotations}} \nt{UnannQualifiedType}} \\
+ \\
+\new{\nt{UnannQualifiedType}}: \\
+\qquad        \nt{Identifier} \multi{ \term{.} \opt{\nt{Annotations}} \nt{Identifier} } \\
+ \\
+\new{\nt{QualifiedTypeList}}: \\
+\qquad        \nt{QualifiedType} \multi{ \term{,} \nt{QualifiedType} } \\
+\\
+\nt{CatchType}: \\
+\qquad        \new{\nt{UnannQualifiedType}} \multi{ \term{|} \new{\nt{QualifiedType}} } \\
+\\
+\nt{MethodDeclaratorRest}: \\
+\qquad            \nt{FormalParameters} \multi{\new{\opt{\nt{Annotations}}} \term{[]}} \opt{\term{throws} \nt{Qualified\new{Type}List}} \alt{ \nt{Block} \altor{} \term{;} } \\
+ \\
+\nt{VoidMethodDeclaratorRest}: \\
+\qquad            \nt{FormalParameters} \opt{ \term{throws} Qualified\new{Type}List } \alt{ \nt{Block} \altor{} \term{;} } \\
+ \\
+\nt{ConstructorDeclaratorRest}: \\
+\qquad            \nt{FormalParameters} \opt{ \term{throws} Qualified\new{Type}List } \nt{Block} \\
+ \\
+\nt{InterfaceMethodDeclaratorRest}: \\
+\qquad            \nt{FormalParameters} \multi{\new{\opt{\nt{Annotations}}} \term{[]}} \opt{\term{throws} \nt{Qualified\new{Type}List}}   \term{;} \\
+ \\
+\nt{VoidInterfaceMethodDeclaratorRest}: \\
+\qquad            \nt{FormalParameters} \opt{\term{throws} \nt{Qualified\new{Type}List}}   \term{;} \\
+\end{tabbing}
+
+The CatchType rule allows each exception type in a union of types (JLS
+\ahref{\jlsFourteenTwenty}{\S14.20}) to be annotated independently.  There
+is no syntax to indicate that an annotation applies to every exception type
+in a union of types.
+% the programmer would have to duplicate the annotation for each disjunct.
+% , but a higher level tool might choose to act as if the
+% first annotation in a union of types applies to every type in the union.
+
+
+
 % \item
-Annotations are permitted on the simple name in a static nested class.
+% Annotations may appear at the beginning of a disjunctive type, before a
+% vertical bar, or at the beginning of a conjunctive type, before an ampersand:
+% 
+% \todo{give the grammar rules: catch, extends, others?}
+
+
+
+\item
+Annotations are permitted on the simple name in a static nested class:
 
 \begin{tabbing}
 \qquad \= \kill
@@ -777,8 +843,9 @@ Annotations are permitted on the simple name in a static nested class.
 \qquad \new{\opt{\nt{Annotations}} \nt{UnannReferenceType}} \\
  \\
 \new{\nt{UnannReferenceType}}: \\
-\qquad            \nt{Identifier} \opt{\nt{TypeArguments}} \multi{ . \new{\opt{\nt{Annotations}}} \nt{Identifier} \opt{\nt{TypeArguments}}}
+\qquad            \nt{Identifier} \opt{\nt{TypeArguments}} \multi{ \term{.} \new{\opt{\nt{Annotations}}} \nt{Identifier} \opt{\nt{TypeArguments}}}
 \end{tabbing}
+\end{enumerate}
 
 \item
 Annotations may appear on the wildcard in any type argument.
@@ -791,19 +858,15 @@ A wildcard is the declaration of an anonymous (unnamed) type parameter.
 \end{tabbing}
 
 
-% \item
-% Annotations may appear at the beginning of a disjunctive type, before a
-% vertical bar, or at the beginning of a conjunctive type, before an ampersand:
-% 
-% \todo{give the grammar rules: catch, extends, others?}
-
-
 \item
 To permit annotations on levels of an array (in declarations, not
 constructors), change ``\multi{\term{[]}}''  to
 ``\multi{\new{\opt{\nt{Annotations}}} \term{[]}}''.
 (This was abstracted out as
 ``\nt{BracketsOpt}'' in the 2nd edition of the JLS~\cite{GoslingJSB2000}.)
+Two such changes (in \nt{MethodDeclaratorRest} and
+\nt{InterfaceMethodDeclaratorRest}) already appeared above in
+point~\ref{sec:qualified-type-list}.
 
 \begin{tabbing}
 \qquad \= \kill
@@ -812,12 +875,6 @@ constructors), change ``\multi{\term{[]}}''  to
  \\
 \nt{VariableDeclaratorId}: \\
 \qquad       \nt{Identifier} \multi{\new{\opt{\nt{Annotations}}} \term{[]}} \\
- \\
-\nt{MethodDeclaratorRest}: \\
-\qquad            \nt{FormalParameters} \multi{\new{\opt{\nt{Annotations}}} \term{[]}} \opt{\term{throws} \nt{QualifiedTypeList}} \alt{ \nt{Block} \altor{} \term{;} } \\
- \\
-\nt{InterfaceMethodDeclaratorRest}: \\
-\qquad            \nt{FormalParameters} \multi{\new{\opt{\nt{Annotations}}} \term{[]}} \opt{\term{throws} \nt{QualifiedTypeList}}   \term{;} \\
  \\
 \nt{ConstantDeclaratorRest}: \\
 \qquad        \multi{\new{\opt{\nt{Annotations}}} \term{[]}} \opt{\term{=} \nt{VariableInitializer}}
@@ -940,8 +997,8 @@ would write
 
 
 An important property of this syntax is that, in two declarations that
-differ only in the number of array levels, the annotations mean the same
-thing.  For example, \code{var1} has
+differ only in the number of array levels, the annotations refer to the same
+type.  For example, \code{var1} has
 the same annotations as the elements of \code{arr2}:
 
 \preverbnegspace
@@ -952,6 +1009,8 @@ the same annotations as the elements of \code{arr2}:
 
 \noindent
 because in each case \code{@NonNull} refers to the String, not the array.
+(In one case, \<String> is the ground type (the main type) and in the other
+case it is the array element type.)
 This consistency is especially important since the two variables may appear in a single
 declaration:
 
@@ -959,6 +1018,15 @@ declaration:
 \begin{Verbatim}
   @NonNull String var1, arr2[];
 \end{Verbatim}
+
+These @Foo annotation appear in different locations:
+"ground type" vs. "element type".
+
+new @Foo T
+new @Foo T[1][2][3]
+
+also regular field types.
+
 
 %% Probably don't bring this up.  It should be possible to infer it anyway.
 % In this (deprecated but legal) syntax, in each component you read
@@ -1015,7 +1083,7 @@ within angle brackets as for generics.
 
 \subsubsection{Syntax of annotations on qualified types\label{qualified-type-syntax}}
 
-The syntax to annotate a qualitied type use is (for example) 
+The syntax to annotate a qualified type use is (for example) 
 \<java.lang.@NonNull String> or \<Outer. @NonNull StaticNestedClass>.
 An alternative would be to write the annotation before the full type
 instead of the simple name, as in \<@NonNull java.lang.String> or
@@ -1115,37 +1183,64 @@ compiler issues the error even if no annotation processor is being run.)
 %   specified usage restriction.
 % (See http://download.oracle.com/javase/6/docs/api/java/lang/annotation/Target.html .)
 
-A programmer could write a \code{@Target} meta-annotation indicating that an
-annotation is \emph{both} a type annotation and a declaration annotation.
-We have not found an example where such a meta-annotation is desirable;
-although it is legal, it is considered bad style.
-For example, suppose that a programmer wrote 
+As a mare extended example, suppose that you had defined the following annotations:
 
-\preverbnegspace
 \begin{Verbatim}
-  @Target({ ElementType.TYPE_USE, ElementType.METHOD })
-  public @interface SillyAnnotation { ... }
+  @Target({TYPE_USE}) @interface TAnno { }
+  @Target({METHOD}) @interface MAnno { }
+  @Target({METHOD, TYPE_USE}) @interface MTAnno { }
+  @Target({FIELD}) @interface FAnno { }
+  @Target({FIELD, TYPE_USE}) @interface FTAnno { }
 \end{Verbatim}
 
-\noindent
-If \<@SillyAnnotation> were written before a non-\<void> method, then
-the annotation would apply to both the return type and the
-method declaration.  The annotation appears twice in the AST
-during annotation processing, and it appears twice in the classfile.
+Then the following code example shows which annotations are legal and which
+are illegal; it also shows, for each legal source-code annotation, how many
+annotations appear in the AST during annotation processing and in the
+classfile.
 % In other words, a Java 7 and a Java 8 compiler would
 % produce classfiles with different numbers of annotations.
+
+\begin{Verbatim}
+  @FAnno Object field4;              // legal, one field annotation
+  @TAnno Object field5;              // legal, one type annotation
+  @FTAnno Object field6;             // legal, one field annotation and one type annotation
+  @FAnno java.lang.Object field7;    // legal, one field annotation
+  @TAnno java.lang.Object field8;    // illegal
+  @FTAnno java.lang.Object field9;   // legal, one field annotation
+  java.lang. @FAnno Object field10;  // illegal
+  java.lang. @TAnno Object field11;  // legal, one type annotation
+  java.lang. @FTAnno Object field12  // legal, one type annotation
+
+  @MAnno void myMethod1() { ... }                // legal, one method annotation
+  @TAnno void myMethod2() { ... }                // illegal
+  @MTAnno void myMethod3() { ... }               // legal, one method annotation
+  @MAnno Object myMethod4() { ... }              // legal, one method annotation
+  @TAnno Object myMethod5() { ... }              // legal, one type annotation
+  @MTAnno Object myMethod6() { ... }             // legal, one method annotation and one type annotation
+  @MAnno java.lang.Object myMethod7() { ... }    // legal, one method annotation
+  @TAnno java.lang.Object myMethod8() { ... }    // illegal
+  @MTAnno java.lang.Object myMethod9() { ... }   // legal, one method annotation
+  java.lang. @MAnno Object myMethod10() { ... }  // illegal
+  java.lang. @TAnno Object myMethod11() { ... }  // legal, one type annotation
+  java.lang. @MTAnno Object myMethod12() { ... } // legal, one type annotation
+\end{Verbatim}
+
+
+Note from the above examples that a programmer is permitted to write can
+write a \code{@Target} meta-annotation indicating that an annotation, such
+as \<@FTAnno> or \<@MTAnno>, is \emph{both} a type annotation and a
+declaration annotation.
+We have not found an example where such a meta-annotation is desirable for
+a newly-created annotation; although it is legal, it is considered bad style.
+% Are Colin's examples about effect systems a counterexample?
+By contrast, when migrating from Java SE 7 and older annotation
+processors to Java SE 8 and newer annotation processors, it may be
+desirable for the annotation to be both a type annotation and a declaration
+annotation, for reasons of backward compatibility.
+
 A tool that reads a classfile and writes Java-like output, such as Javadoc
 or a decompiler, must take care not to write an annotation twice in the
-decompiled code, as in ``\code{@SillyAnnotation @SillyAnnotation int m()}\ldots''.
-% Is this rule a good idea??  Or should we use this rule:
-%   It is legal to write \<@A void foo() \ttlcb\ ...\ \ttrcb>, where \<@A> is
-%   meta-annotated with \<@Target(\ttlcb ElementType.TYPE\_USE, ElementType.METHOD\ttrcb)>
-%    or \<@A> has no \<@Target> meta-annotation; in either case, the \<@A>
-%   annotation is applied only to the method declaration.  The code construct
-%   would have been illegal if \<@A> were a type annotation.
-If you write \<@SillyAnnotation> on a \<void>-returning method, then
-it applies only to the declaration, because it is not written in a type
-annotation position.
+decompiled code, as in ``\code{@FTAnno @FTAnno Object field6;}''.
 
 
 
@@ -1568,7 +1663,6 @@ type_annotation {
         catch_target;
         offset_target;
         type_argument_target;
-        method_reference_target;
     } target_info;     // identifies the targeted program element, see Section 3.3
     type_path target_path; // identifies targeted type in a compound type (array, generic, etc.), see Section 3.4
     // Original fields from "annotation" structure:
@@ -1760,7 +1854,7 @@ targets a class declaration type parameter.
 
 (These declaration annotations appear in 
 \RuntimeInOrVisibleTypeAnnotations attributes, rather than 
-\RuntimeInOrVisibleAnnotations attributes, because genericss are not
+\RuntimeInOrVisibleAnnotations attributes, because generics are not
 well-handled by the classfile.  For example, the \<Signature> attribute of
 of a generic class/method cannot store attributes, much less index them to
 indicate which type parameter is being annotated.  The additional location
@@ -1807,20 +1901,6 @@ Bound index 0 is always a class, not interface, type.
 If the programmer-supplied upper bound of the type variable is an
 interface, it is treated as the second bound, and the implicit first bound
 is \code{java.lang.Object}.
-
-Consider the following
-example:
-
-\preverbnegspace
-\begin{Verbatim}
-  <T extends @A Object & @B Comparable, U extends @C Cloneable>
-\end{Verbatim}
-
-\noindent
-Here
-\code{@A} has \code{type\_parameter\_index} 0 and \code{bound\_index} 0,
-\code{@B} has \code{type\_parameter\_index} 0 and \code{bound\_index} 1, and
-\code{@C} has \code{type\_parameter\_index} 1 and \code{bound\_index} 1.
 
 A \RuntimeInOrVisibleTypeAnnotations attribute containing a
 \code{type\_parameter\_bound\_target} appears in the attributes table of a
@@ -1936,6 +2016,11 @@ appears in the \<exception\_table> slot of the \<Code> attribute).
     };
 \end{Verbatim}
 
+In a multi-catch, each exception parameter may have different annotations,
+and this correspondence is maintained in the classfile.  For example, a
+compiler might create one exception table entry per disjunct, and annotate
+each one with the appropriate annotations.
+
 \attributelocation{containing a \code{catch\_target}}{\code{Code} attribute}
 
 
@@ -2001,10 +2086,19 @@ method invocation or a method reference.  These annotations
 are attached to a single bytecode, not a bytecode range.
 
 \code{type\_argument\_index} specifies the index of the type argument in the
-expression.
+expression.  
+For a constructor/method invocation, \code{type\_argument\_index} specifies
+the index of a type argument in the list of explicit non-wildcard type
+arguments, such as
+\code{x.<@Foo String>m()} or \code{new <@Foo String> @Bar A()}.
 
+It might seem odd that instanceof uses \code{target\_info} of
+\code{offset\_target}, whereas cast uses \code{type\_argument\_index},
+which has an additional \code{type\_argument\_index} field.  The reason is
+to distinguish where an annotation appears within a cast to an intersection
+type, as in \<(@A T \& @B U) x>.
 
-For annotated casts, the attribute may be attached to a
+For an annotated cast, the attribute may be attached to a
 \code{checkcast} bytecode, or to any other bytecode.  The rationale for
 this is that the Java compiler is permitted to omit \code{checkcast}
 bytecodes for casts that are guaranteed to be no-ops.  For example, a
@@ -2040,14 +2134,6 @@ originally attached to the first type argument of \<C>.
 
 
 
-TODO: \code{type\_argument\_index} specifies the index of a type argument in the list
-       of explicit non-wildcard type arguments passed to the
-       constructor/method invocation.
-       e.g. \code{x.<@Foo String>m()}
-       e.g. \code{new <@Foo String> @Bar A()}
-
-
-
 \subsection{The \code{type\_path} structure:  Identifying part of a compound type\label{class-file:ext:type_path}}
 
 \newcommand{\tpath}[2]{\codefootnotesize{path\_length: #1; path: [#2]}}
@@ -2057,6 +2143,110 @@ TODO: \code{type\_argument\_index} specifies the index of a type argument in the
 \newcommand{\ttypearg}[1]{\codefootnotesize{TYPE\_ARGUMENT(3, #1)}}
 
 % See test/tools/javac/annotations/typeAnnotations/referenceinfos/FromSpecification.java
+
+
+The \code{type\_path} structure identifies a part of a compound type.
+In a compound type (a parameterized, wildcard, array, or nested type),
+there are multiple places that an annotation may appear.
+For example, consider the difference among
+\code{@X Map<String, Object>},
+\code{Map<@X String, Object>}, and
+\code{Map<String, @X Object>};
+or the difference among
+\code{Foo<@X ? extends T>} and
+\code{Foo<? extends @X T>};
+or the difference among 
+\code{@X String [] []},
+\code{String @X [] []}, and
+\code{String [] @X []};
+or the difference among 
+\code{@X Outer.Inner} and
+\code{Outer.@X Inner}.
+The \code{type\_path} structure distinguishes among these locations.
+
+\begin{Verbatim}
+struct type_path {
+  u1              path_length;
+  type_path_entry path[path_length];
+}
+
+struct type_path_entry {
+  u1 type_path_kind;
+    // 0: annotation is deeper in this array type
+    // 1: annotation is deeper in this nested type
+    // 2: annotation is on the bound of this wildcard type arg
+    // 3: annotation is on a type argument of this parameterized type
+  u1 type_argument_index;
+    // 0, if type_path_kind is 0, 1, or 2
+    // the 0-based index of the type arg in this parameterized type, if type_path_kind is 3
+}
+\end{Verbatim}
+
+% TODO: what about having BOTH lower_bound and upper_bound for wildcard_path??
+
+When \code{type\_path\_kind} is 0, 1, or 2, then
+\code{type\_argument\_index} must be 0.
+
+If the compound type is viewed as a tree, then 
+the \code{type\_path} structure represents a path in that tree.
+% , from the top down or the ``outside in''.
+
+The \code{type\_path} that is stored in the class file is with respect to the full type, not the
+source code representation.  In the source code, a type can be abbreviated
+or partially written out, such as a nested type written without the outer
+type or a raw type written without the type arguments.
+
+In the class file, all annotations on the full type appear.  For example,
+the classfile would record the type in this \<new> expression as
+\<@A Outer.@B Inner>:
+
+\preverbnegspace
+\begin{Verbatim}
+  @A Outer f1 = ...
+  ... f1.new @B Inner() ...
+\end{Verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Non-normative text follows
+%%%
+
+\label{page:non-normative-start}
+
+\appendix
+
+
+\section{Examples of classfile structure\label{classfile-examples}}
+
+These examples are not normative, so they are at the end of the
+specification to keep
+
+
+\subsection{Examples of type parameter bounds\label{classfile-examples-type-parameter-bounds}}
+
+Here is an example of type parameter bounds
+(Section~\ref{class-file:ext:ri:tpbound}).
+
+Consider the following
+example:
+
+\preverbnegspace
+\begin{Verbatim}
+  <T extends @A Object & @B Comparable, U extends @C Cloneable>
+\end{Verbatim}
+
+\noindent
+Here
+\code{@A} has \code{type\_parameter\_index} 0 and \code{bound\_index} 0,
+\code{@B} has \code{type\_parameter\_index} 0 and \code{bound\_index} 1, and
+\code{@C} has \code{type\_parameter\_index} 1 and \code{bound\_index} 1.
+
+
+\subsection{Examples of the \code{type\_path} structure\label{classfile-examples-type_path}}
+
+Figure~\ref{tbl:locations} shows some examples of the \code{type\_path}
+structure (Section~\ref{class-file:ext:type_path}).
+
 
 \begin{figure}[tp!]
 \begin{center}
@@ -2163,77 +2353,7 @@ TODO: \code{type\_argument\_index} specifies the index of a type argument in the
   }
 \end{figure}
 
-The \code{type\_path} structure identifies a part of a compound type.
-In a compound type (a parameterized, wildcard, array, or nested type),
-there are multiple places that an annotation may appear.
-For example, consider the difference among
-\code{@X Map<String, Object>},
-\code{Map<@X String, Object>}, and
-\code{Map<String, @X Object>};
-or the difference among
-\code{Foo<@X ? extends T>} and
-\code{Foo<? extends @X T>};
-or the difference among 
-\code{@X String [] []},
-\code{String @X [] []}, and
-\code{String [] @X []};
-or the difference among 
-\code{@X Outer.Inner} and
-\code{Outer.@X Inner}.
-The \code{type\_path} structure distinguishes among these locations.
 
-\begin{Verbatim}
-struct type_path {
-  u1              path_length;
-  type_path_entry path[path_length];
-}
-
-struct type_path_entry {
-  u1 type_path_kind;
-    // 0: annotation is deeper in this array type
-    // 1: annotation is deeper in this nested type
-    // 2: annotation is on the bound of this wildcard type arg
-    // 3: annotation is on the i'th type arg of this parameterized type
-  u1 type_argument_index;
-    // 0: ignore me
-    // non-0: the 1st, 2nd, etc type arg of this parameterized type
-}
-\end{Verbatim}
-
-% TODO: what about having BOTH lower_bound and upper_bound for wildcard_path??
-
-When \code{type\_path\_kind} is 0, 1, or 2, then
-\code{type\_argument\_index} must be 0.
-
-If the compound type is viewed as a tree, then 
-the \code{type\_path} structure represents a path in that tree.
-% , from the top down or the ``outside in''.
-
-Figure~\ref{tbl:locations} shows some examples.
-
-The \code{type\_path} that is stored in the class file is with respect to the full type, not the
-source code representation.  In the source code, a type can be abbreviated
-or partially written out, such as a nested type written without the outer
-type or a raw type written without the type arguments.
-
-In the class file, all annotations on the full type appear.  For example,
-the classfile would record the type in this \<new> expression as
-\<@A Outer.@B Inner>:
-
-\preverbnegspace
-\begin{Verbatim}
-  @A Outer f1 = ...
-  ... f1.new @B Inner() ...
-\end{Verbatim}
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Non-normative text follows
-%%%
-
-\label{page:non-normative-start}
-
-\appendix
 
 \section{Example use of type annotations:  Type qualifiers\label{type-qualifiers}}
 
@@ -3620,7 +3740,7 @@ Framework, which builds on the Type Annotations syntax, at JavaOne 2009.
 % LocalWords:  myObject GuardedBy accessLock Goetz JavaCOP signedness Nonnull
 % LocalWords:  NotNull JavaCOP's TypeArguments BasicType ForVarControl nullness
 % LocalWords:  FormalParameterDecls ForVarControlRest FormalParameterDeclsRest
-% LocalWords:  FormalParameters VoidMethodDeclaratorRest BracketsOpt myVar 2x5
+% LocalWords:  FormalParameters VoidMethodDeclaratorRest BracketsOpt myVar
 % LocalWords:  QualifiedTypeList MethodDeclaratorRest IdentifierSuffix MyClass
 % LocalWords:  InterfaceMethodDeclaratorRest VoidInterfaceMethodDeclaratorRest
 % LocalWords:  ConstructorDeclaratorRest VariableDeclaratorRest nonnullelements
@@ -3644,21 +3764,19 @@ Framework, which builds on the Type Annotations syntax, at JavaOne 2009.
 % LocalWords:  GenericsStackIncrement identifierStack getDeclaredAnnotations
 % LocalWords:  ReceiverNonNull superclasses TypeArgument runtime newMap ernst
 % LocalWords:  Nonnegative typedefs unabbrev reusability typedef getstatic init
-% LocalWords:  QualifiedType toArray localvar ReadWrite 2x5 0x86 0x00 0x02 0x10
-% LocalWords:  ClassFile clinit StackMapTable StaticNested boolean var1 0x12
-% LocalWords:  ReferenceType VariableModifier UnannReferenceType OrReceiver 2x5
+% LocalWords:  QualifiedType toArray localvar ReadWrite 
+% LocalWords:  ClassFile clinit StackMapTable StaticNested boolean var1 
+% LocalWords:  ReferenceType VariableModifier UnannReferenceType OrReceiver
 % LocalWords:  FormalParameter Decls FormalParameterOrReceiverDecls nestings
 % LocalWords:  NestedStatic decompiler myLock Reified arr2 syntaxes TargetType
-% LocalWords:  SillyAnnotation 0x00 0x01 0x02 0x03 0x04 0x05 0x06 0x07 0x08
-% LocalWords:  0x09 0x0A 0x0B 0x0C 0x0D 0x0E 0x0F 0x10 0x11 0x12 0x13 0x14 0x15
-% LocalWords:  0x16 0x17 0x18 0x19 0x1A 0x1B 0x1C 0x1D 0x1E 0x1F 0x20 0x21 0x22
-% LocalWords:  0x23 0x24 0x25 308's casted useE1 useE2 pack200 unpack200 0x14
-% LocalWords:  Mahmood theReceiver 2x5 foo 0x00 0x01 0x02 0x03 0x04 0x05 0x16
-% LocalWords:  0x06 0x07 0x08 0x09 0x0A 0x0B 0x0C 0x0D 0x0E 0x0F 0x10 2x5 0x18
-% LocalWords:  0x11 0x12 0x13 0x14 0x15 0x16 0x17 0x18 0x19 0x1A 0x1B 0x00 0x1A
-% LocalWords:  0x1C 0x1D 0x1E 0x1F 0x20 0x21 0x22 0x23 0x24 0x25 308's 7in 0x1C
-%  LocalWords:  0x01 0x02 0x03 0x10 0x11 0x12 0x13 0x14 0x15 0x16 0x17 2x5 0x1E
-%  LocalWords:  0x18 0x19 0x1A 0x1B 0x1C 0x1D 0x1E 0x1F 0x80 0x81 0x82 2x5 0x80
-%  LocalWords:  0x83 0x84 0x85 0x86 0x87 0x88 0x89 0x8A 0x8B 0x8C 0x8D 0x82
-%  LocalWords:  0x8E 0x8F 308's 0x00 0x01 0x02 0x03 innerMethod 0x86 0x00 0x84
-% LocalWords:  0x88 0x8A 0x8C 0x8E 0x90 0x92 308's multi
+% LocalWords:  SillyAnnotation 
+% LocalWords:  308's casted useE1 useE2 pack200 unpack200 
+% LocalWords:  Mahmood theReceiver foo 
+% LocalWords:  308's innerMethod 
+% LocalWords:  308's multi classfiles MyType
+% LocalWords:  TypeAnnotations LocalVariableDeclarationStatement
+% LocalWords:  VariableDeclarators AnnotationTypeElementRest CatchType
+% LocalWords:  AnnotationMethodOrConstantRest QualifiedIdentifer 
+% LocalWords:  QualifiedIdentiferList UnannQualifiedType 
+% LocalWords:  StaticNestedClass 
+% LocalWords:  RetentionPolicy FTAnno MTAnno field6 
