@@ -700,7 +700,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         public List<JCTypeParameter> getTypeParameters() {
             return typarams;
         }
-        public JCTree getExtendsClause() { return extending; }
+        public JCExpression getExtendsClause() { return extending; }
         public List<JCExpression> getImplementsClause() {
             return implementing;
         }
@@ -731,7 +731,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         /** type parameters */
         public List<JCTypeParameter> typarams;
         /** receiver parameter */
-        public JCReceiverVariableDecl recvparam;
+        public JCVariableDecl recvparam;
         /** value parameters */
         public List<JCVariableDecl> params;
         /** exceptions thrown by this method */
@@ -746,7 +746,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
                             Name name,
                             JCExpression restype,
                             List<JCTypeParameter> typarams,
-                            JCReceiverVariableDecl recvparam,
+                            JCVariableDecl recvparam,
                             List<JCVariableDecl> params,
                             List<JCExpression> thrown,
                             JCBlock body,
@@ -779,7 +779,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         public List<JCVariableDecl> getParameters() {
             return params;
         }
-        public JCReceiverVariableDecl getReceiverParameter() { return recvparam; }
+        public JCVariableDecl getReceiverParameter() { return recvparam; }
         public List<JCExpression> getThrows() {
             return thrown;
         }
@@ -806,12 +806,15 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         public JCModifiers mods;
         /** variable name */
         public Name name;
+        /** variable name expression */
+        public JCExpression nameexpr;
         /** type of the variable */
         public JCExpression vartype;
         /** variable's initial value */
         public JCExpression init;
         /** symbol */
         public VarSymbol sym;
+
         protected JCVariableDecl(JCModifiers mods,
                          Name name,
                          JCExpression vartype,
@@ -823,12 +826,27 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
             this.init = init;
             this.sym = sym;
         }
+
+        protected JCVariableDecl(JCModifiers mods,
+                         JCExpression nameexpr,
+                         JCExpression vartype) {
+            this(mods, null, vartype, null, null);
+            this.nameexpr = nameexpr;
+            if (nameexpr.hasTag(Tag.IDENT)) {
+                this.name = ((JCIdent)nameexpr).name;
+            } else {
+                // Only other option is qualified name x.y.this;
+                this.name = ((JCFieldAccess)nameexpr).name;
+            }
+        }
+
         @Override
         public void accept(Visitor v) { v.visitVarDef(this); }
 
         public Kind getKind() { return Kind.VARIABLE; }
         public JCModifiers getModifiers() { return mods; }
         public Name getName() { return name; }
+        public JCExpression getNameExpression() { return nameexpr; }
         public JCTree getType() { return vartype; }
         public JCExpression getInitializer() {
             return init;
@@ -842,29 +860,6 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         public Tag getTag() {
             return VARDEF;
         }
-    }
-
-    /**
-     * A receiver variable declaration:
-     *   C this
-     *   Outer Outer.this
-     */
-    public static class JCReceiverVariableDecl extends JCVariableDecl {
-        /** variable name expression */
-        public JCExpression nameexpr;
-        protected JCReceiverVariableDecl(JCModifiers mods,
-                         JCExpression nameexpr,
-                         JCExpression vartype) {
-            super(mods, null, vartype, null, null);
-            this.nameexpr = nameexpr;
-            if (nameexpr.hasTag(Tag.IDENT)) {
-                this.name = ((JCIdent)nameexpr).name;
-            } else {
-                // Only other option is qualified name x.y.this;
-                this.name = ((JCFieldAccess)nameexpr).name;
-            }
-        }
-        // TODO: do we want a separate tag?
     }
 
     /**
@@ -1180,7 +1175,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
             return v.visitTry(this, d);
         }
         @Override
-        public List<? extends JCTree> getResources() {
+        public List<JCTree> getResources() {
             return resources;
         }
         @Override
@@ -1397,8 +1392,8 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
      */
     public static class JCThrow extends JCStatement implements ThrowTree {
         public JCExpression expr;
-        protected JCThrow(JCTree expr) {
-            this.expr = (JCExpression)expr;
+        protected JCThrow(JCExpression expr) {
+            this.expr = expr;
         }
         @Override
         public void accept(Visitor v) { v.visitThrow(this); }
@@ -2435,7 +2430,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
                             Name name,
                             JCExpression restype,
                             List<JCTypeParameter> typarams,
-                            JCReceiverVariableDecl recvparam,
+                            JCVariableDecl recvparam,
                             List<JCVariableDecl> params,
                             List<JCExpression> thrown,
                             JCBlock body,
@@ -2471,7 +2466,7 @@ public abstract class JCTree implements Tree, Cloneable, DiagnosticPosition {
         JCBreak Break(Name label);
         JCContinue Continue(Name label);
         JCReturn Return(JCExpression expr);
-        JCThrow Throw(JCTree expr);
+        JCThrow Throw(JCExpression expr);
         JCAssert Assert(JCExpression cond, JCExpression detail);
         JCMethodInvocation Apply(List<JCExpression> typeargs,
                     JCExpression fn,

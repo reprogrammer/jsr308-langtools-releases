@@ -178,7 +178,7 @@ public class TreeMaker implements JCTree.Factory {
                                Name name,
                                JCExpression restype,
                                List<JCTypeParameter> typarams,
-                               JCReceiverVariableDecl recvparam,
+                               JCVariableDecl recvparam,
                                List<JCVariableDecl> params,
                                List<JCExpression> thrown,
                                JCBlock body,
@@ -204,8 +204,8 @@ public class TreeMaker implements JCTree.Factory {
         return tree;
     }
 
-    public JCReceiverVariableDecl ReceiverVarDef(JCModifiers mods, JCExpression name, JCExpression vartype) {
-        JCReceiverVariableDecl tree = new JCReceiverVariableDecl(mods, name, vartype);
+    public JCVariableDecl ReceiverVarDef(JCModifiers mods, JCExpression name, JCExpression vartype) {
+        JCVariableDecl tree = new JCVariableDecl(mods, name, vartype);
         tree.pos = pos;
         return tree;
     }
@@ -332,7 +332,7 @@ public class TreeMaker implements JCTree.Factory {
         return tree;
     }
 
-    public JCThrow Throw(JCTree expr) {
+    public JCThrow Throw(JCExpression expr) {
         JCThrow tree = new JCThrow(expr);
         tree.pos = pos;
         return tree;

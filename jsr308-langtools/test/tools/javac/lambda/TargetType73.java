@@ -21,8 +21,27 @@
  * questions.
  */
 
-// key: compiler.err.receiver.parameter.not.applicable.static
+/*
+ * @test
+ * @bug 8014494
+ * @summary javac crashes when varargs element of a method reference is inferred from the context
+ * @compile TargetType73.java
+ */
+import java.util.List;
 
-class ReceiverParameterNotApplicableStatic {
-    static void m(ReceiverParameterNotApplicableStatic this) { }
+class TargetType73 {
+
+    interface Function<X,Y> {
+        Y m(X x);
+    }
+
+    static void test() {
+        m(TargetType73::g);
+    }
+
+    public static <T> List<T> g(T... a) {
+        return null;
+    }
+
+    public static <C> void m(Function<String, C> zipper) {  }
 }

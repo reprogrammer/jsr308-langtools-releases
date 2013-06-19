@@ -853,7 +853,8 @@ public class Check {
                             final List<JCExpression> argtrees,
                             List<Type> argtypes,
                             boolean useVarargs,
-                            boolean unchecked) {
+                            boolean unchecked,
+                            InferenceContext inferenceContext) {
         // System.out.println("call   : " + env.tree);
         // System.out.println("method : " + owntype);
         // System.out.println("actuals: " + argtypes);
@@ -917,7 +918,7 @@ public class Check {
                                   argtype);
             }
             if (!((MethodSymbol)sym.baseSymbol()).isSignaturePolymorphic(types)) {
-                TreeInfo.setVarargsElement(env.tree, types.elemtype(argtype));
+                setVarargsElement(env, types.elemtype(argtype), inferenceContext);
             }
          }
          PolyKind pkind = (sym.type.hasTag(FORALL) &&
@@ -927,6 +928,17 @@ public class Check {
          return owntype;
     }
     //where
+        private void setVarargsElement(final Env<AttrContext> env, final Type elemtype, InferenceContext inferenceContext) {
+            if (inferenceContext.free(elemtype)) {
+                inferenceContext.addFreeTypeListener(List.of(elemtype), new FreeTypeListener() {
+                    public void typesInferred(InferenceContext inferenceContext) {
+                        setVarargsElement(env, inferenceContext.asInstType(elemtype), inferenceContext);
+                    }
+                });
+            }
+            TreeInfo.setVarargsElement(env.tree, elemtype);
+        }
+
         private void assertConvertible(JCTree tree, Type actual, Type formal, Warner warn) {
             if (types.isConvertible(actual, formal, warn))
                 return;
@@ -1361,23 +1373,23 @@ public class Check {
             for (List<? extends JCTree> l = trees; l.nonEmpty(); l = l.tail)
                 validateTree(l.head, checkRaw, isOuter);
         }
+    }
 
-        void checkRaw(JCTree tree, Env<AttrContext> env) {
-            if (lint.isEnabled(LintCategory.RAW) &&
-                tree.type.hasTag(CLASS) &&
-                !TreeInfo.isDiamond(tree) &&
-                !withinAnonConstr(env) &&
-                tree.type.isRaw()) {
-                log.warning(LintCategory.RAW,
-                        tree.pos(), "raw.class.use", tree.type, tree.type.tsym.type);
-            }
+    void checkRaw(JCTree tree, Env<AttrContext> env) {
+        if (lint.isEnabled(LintCategory.RAW) &&
+            tree.type.hasTag(CLASS) &&
+            !TreeInfo.isDiamond(tree) &&
+            !withinAnonConstr(env) &&
+            tree.type.isRaw()) {
+            log.warning(LintCategory.RAW,
+                    tree.pos(), "raw.class.use", tree.type, tree.type.tsym.type);
         }
-
-        boolean withinAnonConstr(Env<AttrContext> env) {
+    }
+    //where
+        private boolean withinAnonConstr(Env<AttrContext> env) {
             return env.enclClass.name.isEmpty() &&
                     env.enclMethod != null && env.enclMethod.name == names.init;
         }
-    }
 
 /* *************************************************************************
  * Exception checking
@@ -3024,9 +3036,9 @@ public class Check {
         // collect an inventory of the annotation elements
         Set<MethodSymbol> members = new LinkedHashSet<MethodSymbol>();
         for (Scope.Entry e = a.annotationType.type.tsym.members().elems;
-             e != null;
-             e = e.sibling)
-            if (e.sym.kind == MTH)
+                e != null;
+                e = e.sibling)
+            if (e.sym.kind == MTH && e.sym.name != names.clinit)
                 members.add((MethodSymbol) e.sym);
 
         // remove the ones that are assigned values

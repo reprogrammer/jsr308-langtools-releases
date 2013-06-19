@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -24,7 +24,7 @@
 /*
  * @test
  * @bug 8008762
- * @summary Type annotation on inner class in anonymous class 
+ * @summary Type annotation on inner class in anonymous class
  *          shows up as regular annotation
  */
 import java.lang.annotation.*;
@@ -61,12 +61,12 @@ public class T8008762 extends ClassfileTestHelper{
     static class Test {
         Object mtest( Test t){ return null; }
         public void test() {
-          mtest( new Test() {
+            mtest( new Test() {
                 class InnerAnon { // Test1$1$InnerAnon.class
-                  @A @B String ai_data = null;
-                  @A @B String ai_m(){ return null; };
+                    @A @B String ai_data = null;
+                    @A @B String ai_m(){ return null; };
                 }
-               InnerAnon IA = new InnerAnon();
+                InnerAnon IA = new InnerAnon();
             });
         }
         @Retention(RUNTIME) @Target(TYPE_USE) @interface A { }
