@@ -282,17 +282,6 @@ public class HtmlTree extends Content {
     }
 
     /**
-     * Generates a EM tag with some content.
-     *
-     * @param body content to be added to the tag
-     * @return an HtmlTree object for the EM tag
-     */
-    public static HtmlTree EM(Content body) {
-        HtmlTree htmltree = new HtmlTree(HtmlTag.EM, nullCheck(body));
-        return htmltree;
-    }
-
-    /**
      * Generates a FRAME tag.
      *
      * @param src the url of the document to be shown in the frame
@@ -416,17 +405,6 @@ public class HtmlTree extends Content {
     }
 
     /**
-     * Generates a I tag with some content.
-     *
-     * @param body content for the tag
-     * @return an HtmlTree object for the I tag
-     */
-    public static HtmlTree I(Content body) {
-        HtmlTree htmltree = new HtmlTree(HtmlTag.I, nullCheck(body));
-        return htmltree;
-    }
-
-    /**
      * Generates a LI tag with some content.
      *
      * @param body content for the tag
@@ -478,9 +456,9 @@ public class HtmlTree extends Content {
      */
     public static HtmlTree META(String httpEquiv, String content, String charSet) {
         HtmlTree htmltree = new HtmlTree(HtmlTag.META);
+        String contentCharset = content + "; charset=" + charSet;
         htmltree.addAttr(HtmlAttr.HTTP_EQUIV, nullCheck(httpEquiv));
-        htmltree.addAttr(HtmlAttr.CONTENT, nullCheck(content));
-        htmltree.addAttr(HtmlAttr.CHARSET, nullCheck(charSet));
+        htmltree.addAttr(HtmlAttr.CONTENT, contentCharset);
         return htmltree;
     }
 
@@ -555,17 +533,6 @@ public class HtmlTree extends Content {
      */
     public static HtmlTree SMALL(Content body) {
         HtmlTree htmltree = new HtmlTree(HtmlTag.SMALL, nullCheck(body));
-        return htmltree;
-    }
-
-    /**
-     * Generates a STRONG tag with some content.
-     *
-     * @param body content for the tag
-     * @return an HtmlTree object for the STRONG tag
-     */
-    public static HtmlTree STRONG(Content body) {
-        HtmlTree htmltree = new HtmlTree(HtmlTag.STRONG, nullCheck(body));
         return htmltree;
     }
 

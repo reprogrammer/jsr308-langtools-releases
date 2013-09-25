@@ -58,20 +58,11 @@ public class JavacTypes implements javax.lang.model.util.Types {
         return instance;
     }
 
-    private static int uidCounter = 0;
-    private final int uid;
-
     /**
      * Public for use only by JavacProcessingEnvironment
      */
     protected JavacTypes(Context context) {
-        uid = ++uidCounter;
         setContext(context);
-    }
-
-    @Override
-    public String toString() {
-        return "JavacTypes#" + uid + " with this.types=" + types;
     }
 
     /**
@@ -148,7 +139,7 @@ public class JavacTypes implements javax.lang.model.util.Types {
         Type unboxed = types.unboxedType((Type) t);
         if (! unboxed.isPrimitive())    // only true primitives, not void
             throw new IllegalArgumentException(String.format("unboxed (%s) is not primitive:  t=%s, this=%s, this.types=%s", unboxed, t, this, this.types));
-        return unboxed;
+        return (PrimitiveType) unboxed;
     }
 
     public TypeMirror capture(TypeMirror t) {

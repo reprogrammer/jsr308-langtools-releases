@@ -115,16 +115,7 @@ public class Enter extends JCTree.Visitor {
         return instance;
     }
 
-    private static int uidCounter = 0;
-    private final int uid;
-
-    @Override
-    public String toString() {
-        return "Enter#" + uid;
-    }
-
     protected Enter(Context context) {
-        uid = ++uidCounter;
         context.put(enterKey, this);
 
         log = Log.instance(context);
@@ -170,7 +161,7 @@ public class Enter extends JCTree.Visitor {
         Env<AttrContext> lintEnv = localEnv;
         while (lintEnv.info.lint == null)
             lintEnv = lintEnv.next;
-        localEnv.info.lint = lintEnv.info.lint.augment(sym.annotations, sym.flags());
+        localEnv.info.lint = lintEnv.info.lint.augment(sym);
         return localEnv;
     }
 
@@ -300,7 +291,7 @@ public class Enter extends JCTree.Visitor {
             if (tree.packageAnnotations.nonEmpty() || pkginfoOpt == PkgInfo.ALWAYS) {
                 if (isPkgInfo) {
                     addEnv = true;
-                } else {
+                } else if (tree.packageAnnotations.nonEmpty()){
                     log.error(tree.packageAnnotations.head.pos(),
                               "pkg.annotations.sb.in.package-info.java");
                 }

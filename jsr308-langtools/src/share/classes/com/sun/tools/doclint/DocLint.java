@@ -30,7 +30,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 
 import javax.lang.model.element.Name;
 import javax.tools.StandardLocation;
@@ -77,13 +76,14 @@ public class DocLint implements Plugin {
 
     // <editor-fold defaultstate="collapsed" desc="Command-line entry point">
     public static void main(String... args) {
+        DocLint dl = new DocLint();
         try {
-            new DocLint().run(args);
+            dl.run(args);
         } catch (BadArgs e) {
             System.err.println(e.getMessage());
             System.exit(1);
         } catch (IOException e) {
-            System.err.println(e);
+            System.err.println(dl.localize("dc.main.ioerror", e.getLocalizedMessage()));
             System.exit(2);
         }
     }
@@ -92,9 +92,10 @@ public class DocLint implements Plugin {
 
     // <editor-fold defaultstate="collapsed" desc="Simple API">
 
-    public static class BadArgs extends Exception {
+    public class BadArgs extends Exception {
         private static final long serialVersionUID = 0;
         BadArgs(String code, Object... args) {
+            super(localize(code, args));
             this.code = code;
             this.args = args;
         }
@@ -124,7 +125,7 @@ public class DocLint implements Plugin {
 
         if (javacFiles.isEmpty()) {
             if (!needHelp)
-                out.println("no files given");
+                out.println(localize("dc.main.no.files.given"));
         }
 
         JavacTool tool = JavacTool.create();
@@ -164,8 +165,8 @@ public class DocLint implements Plugin {
     }
 
     void processArgs(String... args) throws BadArgs {
-        javacOpts = new ArrayList<String>();
-        javacFiles = new ArrayList<File>();
+        javacOpts = new ArrayList<>();
+        javacFiles = new ArrayList<>();
 
         if (args.length == 0)
             needHelp = true;
@@ -184,6 +185,8 @@ public class DocLint implements Plugin {
             } else if (arg.equals("-bootclasspath") && i + 1 < args.length) {
                 javacBootClassPath = splitPath(args[++i]);
             } else if (arg.equals("-classpath") && i + 1 < args.length) {
+                javacClassPath = splitPath(args[++i]);
+            } else if (arg.equals("-cp") && i + 1 < args.length) {
                 javacClassPath = splitPath(args[++i]);
             } else if (arg.equals("-sourcepath") && i + 1 < args.length) {
                 javacSourcePath = splitPath(args[++i]);
@@ -204,53 +207,13 @@ public class DocLint implements Plugin {
     }
 
     void showHelp(PrintWriter out) {
-        out.println("Usage:");
-        out.println("    doclint [options] source-files...");
-        out.println("");
-        out.println("Options:");
-        out.println("  -Xmsgs  ");
-        out.println("    Same as -Xmsgs:all");
-        out.println("  -Xmsgs:values");
-        out.println("    Specify categories of issues to be checked, where 'values'");
-        out.println("    is a comma-separated list of any of the following:");
-        out.println("      reference      show places where comments contain incorrect");
-        out.println("                     references to Java source code elements");
-        out.println("      syntax         show basic syntax errors within comments");
-        out.println("      html           show issues with HTML tags and attributes");
-        out.println("      accessibility  show issues for accessibility");
-        out.println("      missing        show issues with missing documentation");
-        out.println("      all            all of the above");
-        out.println("    Precede a value with '-' to negate it");
-        out.println("    Categories may be qualified by one of:");
-        out.println("      /public /protected /package /private");
-        out.println("    For positive categories (not beginning with '-')");
-        out.println("    the qualifier applies to that access level and above.");
-        out.println("    For negative categories (beginning with '-')");
-        out.println("    the qualifier applies to that access level and below.");
-        out.println("    If a qualifier is missing, the category applies to");
-        out.println("    all access levels.");
-        out.println("    For example, -Xmsgs:all,-syntax/private");
-        out.println("    This will enable all messages, except syntax errors");
-        out.println("    in the doc comments of private methods.");
-        out.println("    If no -Xmsgs options are provided, the default is");
-        out.println("    equivalent to -Xmsgs:all/protected, meaning that");
-        out.println("    all messages are reported for protected and public");
-        out.println("    declarations only. ");
-        out.println("  -stats");
-        out.println("    Report statistics on the reported issues.");
-        out.println("  -h -help --help -usage -?");
-        out.println("    Show this message.");
-        out.println("");
-        out.println("The following javac options are also supported");
-        out.println("  -bootclasspath, -classpath, -sourcepath, -Xmaxerrs, -Xmaxwarns");
-        out.println("");
-        out.println("To run doclint on part of a project, put the compiled classes for your");
-        out.println("project on the classpath (or bootclasspath), then specify the source files");
-        out.println("to be checked on the command line.");
+        String msg = localize("dc.main.usage");
+        for (String line: msg.split("\n"))
+            out.println(line);
     }
 
     List<File> splitPath(String path) {
-        List<File> files = new ArrayList<File>();
+        List<File> files = new ArrayList<>();
         for (String f: path.split(File.pathSeparator)) {
             if (f.length() > 0)
                 files.add(new File(f));
@@ -315,7 +278,6 @@ public class DocLint implements Plugin {
             TaskListener tl = new TaskListener() {
                 @Override
                 public void started(TaskEvent e) {
-                    return;
                 }
 
                 @Override
@@ -353,10 +315,23 @@ public class DocLint implements Plugin {
         return false;
     }
 
+    private String localize(String code, Object... args) {
+        Messages m = (env != null) ? env.messages : new Messages(null);
+        return m.localize(code, args);
+    }
+
     // <editor-fold defaultstate="collapsed" desc="DeclScanner">
 
     static abstract class DeclScanner extends TreePathScanner<Void, Void> {
         abstract void visitDecl(Tree tree, Name name);
+
+        @Override
+        public Void visitCompilationUnit(CompilationUnitTree tree, Void ignore) {
+            if (tree.getPackageName() != null) {
+                visitDecl(tree, null);
+            }
+            return super.visitCompilationUnit(tree, ignore);
+        }
 
         @Override
         public Void visitClass(ClassTree tree, Void ignore) {

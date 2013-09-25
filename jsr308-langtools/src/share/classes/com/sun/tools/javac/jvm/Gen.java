@@ -518,7 +518,7 @@ public class Gen extends JCTree.Visitor {
         // Insert any instance initializers into all constructors.
         if (initCode.length() != 0) {
             List<JCStatement> inits = initCode.toList();
-            initTAs.addAll(c.annotations.getInitTypeAttributes());
+            initTAs.addAll(c.getInitTypeAttributes());
             List<Attribute.TypeCompound> initTAlist = initTAs.toList();
             for (JCTree t : methodDefs) {
                 normalizeMethod((JCMethodDecl)t, inits, initTAlist);
@@ -541,9 +541,9 @@ public class Gen extends JCTree.Visitor {
             methodDefs.append(make.MethodDef(clinit, block));
 
             if (!clinitTAs.isEmpty())
-                clinit.annotations.appendUniqueTypes(clinitTAs.toList());
-            if (!c.annotations.getClassInitTypeAttributes().isEmpty())
-                clinit.annotations.appendUniqueTypes(c.annotations.getClassInitTypeAttributes());
+                clinit.appendUniqueTypeAttributes(clinitTAs.toList());
+            if (!c.getClassInitTypeAttributes().isEmpty())
+                clinit.appendUniqueTypeAttributes(c.getClassInitTypeAttributes());
         }
         // Return all method definitions.
         return methodDefs.toList();
@@ -560,7 +560,7 @@ public class Gen extends JCTree.Visitor {
                 nonfieldTAs.add(ta);
             }
         }
-        sym.annotations.setTypeAttributes(fieldTAs.toList());
+        sym.setTypeAttributes(fieldTAs.toList());
         return nonfieldTAs.toList();
     }
 
@@ -618,7 +618,7 @@ public class Gen extends JCTree.Visitor {
             if (md.body.endpos == Position.NOPOS)
                 md.body.endpos = TreeInfo.endPos(md.body.stats.last());
 
-            md.sym.annotations.appendUniqueTypes(initTAs);
+            md.sym.appendUniqueTypeAttributes(initTAs);
         }
     }
 
@@ -991,9 +991,19 @@ public class Gen extends JCTree.Visitor {
          */
         void genMethod(JCMethodDecl tree, Env<GenContext> env, boolean fatcode) {
             MethodSymbol meth = tree.sym;
-//      System.err.println("Generating " + meth + " in " + meth.owner); //DEBUG
-            if (Code.width(types.erasure(env.enclMethod.sym.type).getParameterTypes())  +
-                (((tree.mods.flags & STATIC) == 0 || meth.isConstructor()) ? 1 : 0) >
+            int extras = 0;
+            // Count up extra parameters
+            if (meth.isConstructor()) {
+                extras++;
+                if (meth.enclClass().isInner() &&
+                    !meth.enclClass().isStatic()) {
+                    extras++;
+                }
+            } else if ((tree.mods.flags & STATIC) == 0) {
+                extras++;
+            }
+            //      System.err.println("Generating " + meth + " in " + meth.owner); //DEBUG
+            if (Code.width(types.erasure(env.enclMethod.sym.type).getParameterTypes()) + extras >
                 ClassFile.MAX_PARAMETERS) {
                 log.error(tree.pos(), "limit.parameters");
                 nerrs++;
@@ -1468,74 +1478,82 @@ public class Gen extends JCTree.Visitor {
             code.statBegin(TreeInfo.endPos(body));
             genFinalizer(env);
             code.statBegin(TreeInfo.endPos(env.tree));
-            Chain exitChain = code.branch(goto_);
-            endFinalizerGap(env);
-            if (startpc != endpc) for (List<JCCatch> l = catchers; l.nonEmpty(); l = l.tail) {
-                // start off with exception on stack
-                code.entryPoint(stateTry, l.head.param.sym.type);
-                genCatch(l.head, env, startpc, endpc, gaps);
-                genFinalizer(env);
-                if (hasFinalizer || l.tail.nonEmpty()) {
-                    code.statBegin(TreeInfo.endPos(env.tree));
-                    exitChain = Code.mergeChains(exitChain,
-                                                 code.branch(goto_));
-                }
-                endFinalizerGap(env);
+            Chain exitChain;
+            if (startpc != endpc) {
+                exitChain = code.branch(goto_);
+            } else {
+                exitChain = code.branch(dontgoto);
             }
-            if (hasFinalizer) {
-                // Create a new register segement to avoid allocating
-                // the same variables in finalizers and other statements.
-                code.newRegSegment();
-
-                // Add a catch-all clause.
-
-                // start off with exception on stack
-                int catchallpc = code.entryPoint(stateTry, syms.throwableType);
-
-                // Register all exception ranges for catch all clause.
-                // The range of the catch all clause is from the beginning
-                // of the try or synchronized block until the present
-                // code pointer excluding all gaps in the current
-                // environment's GenContext.
-                int startseg = startpc;
-                while (env.info.gaps.nonEmpty()) {
-                    int endseg = env.info.gaps.next().intValue();
-                    registerCatch(body.pos(), startseg, endseg,
-                                  catchallpc, 0);
-                    startseg = env.info.gaps.next().intValue();
+            endFinalizerGap(env);
+            if (startpc != endpc) {
+                for (List<JCCatch> l = catchers; l.nonEmpty(); l = l.tail) {
+                    // start off with exception on stack
+                    code.entryPoint(stateTry, l.head.param.sym.type);
+                    genCatch(l.head, env, startpc, endpc, gaps);
+                    genFinalizer(env);
+                    if (hasFinalizer || l.tail.nonEmpty()) {
+                        code.statBegin(TreeInfo.endPos(env.tree));
+                        exitChain = Code.mergeChains(exitChain,
+                                                     code.branch(goto_));
+                    }
+                    endFinalizerGap(env);
                 }
-                code.statBegin(TreeInfo.finalizerPos(env.tree));
-                code.markStatBegin();
 
-                Item excVar = makeTemp(syms.throwableType);
-                excVar.store();
-                genFinalizer(env);
-                excVar.load();
-                registerCatch(body.pos(), startseg,
-                              env.info.gaps.next().intValue(),
-                              catchallpc, 0);
-                code.emitop0(athrow);
-                code.markDead();
+                if (hasFinalizer) {
+                    // Create a new register segement to avoid allocating
+                    // the same variables in finalizers and other statements.
+                    code.newRegSegment();
 
-                // If there are jsr's to this finalizer, ...
-                if (env.info.cont != null) {
-                    // Resolve all jsr's.
-                    code.resolve(env.info.cont);
+                    // Add a catch-all clause.
 
-                    // Mark statement line number
+                    // start off with exception on stack
+                    int catchallpc = code.entryPoint(stateTry, syms.throwableType);
+
+                    // Register all exception ranges for catch all clause.
+                    // The range of the catch all clause is from the beginning
+                    // of the try or synchronized block until the present
+                    // code pointer excluding all gaps in the current
+                    // environment's GenContext.
+                    int startseg = startpc;
+                    while (env.info.gaps.nonEmpty()) {
+                        int endseg = env.info.gaps.next().intValue();
+                        registerCatch(body.pos(), startseg, endseg,
+                                      catchallpc, 0);
+                        startseg = env.info.gaps.next().intValue();
+                    }
                     code.statBegin(TreeInfo.finalizerPos(env.tree));
                     code.markStatBegin();
 
-                    // Save return address.
-                    LocalItem retVar = makeTemp(syms.throwableType);
-                    retVar.store();
-
-                    // Generate finalizer code.
-                    env.info.finalize.genLast();
-
-                    // Return.
-                    code.emitop1w(ret, retVar.reg);
+                    Item excVar = makeTemp(syms.throwableType);
+                    excVar.store();
+                    genFinalizer(env);
+                    excVar.load();
+                    registerCatch(body.pos(), startseg,
+                                  env.info.gaps.next().intValue(),
+                                  catchallpc, 0);
+                    code.emitop0(athrow);
                     code.markDead();
+
+                    // If there are jsr's to this finalizer, ...
+                    if (env.info.cont != null) {
+                        // Resolve all jsr's.
+                        code.resolve(env.info.cont);
+
+                        // Mark statement line number
+                        code.statBegin(TreeInfo.finalizerPos(env.tree));
+                        code.markStatBegin();
+
+                        // Save return address.
+                        LocalItem retVar = makeTemp(syms.throwableType);
+                        retVar.store();
+
+                        // Generate finalizer code.
+                        env.info.finalize.genLast();
+
+                        // Return.
+                        code.emitop1w(ret, retVar.reg);
+                        code.markDead();
+                    }
                 }
             }
             // Resolve all breaks.
@@ -1773,7 +1791,16 @@ public class Gen extends JCTree.Visitor {
             r.load();
             code.emitop0(ireturn + Code.truncate(Code.typecode(pt)));
         } else {
+            /*  If we have a statement like:
+             *
+             *  return;
+             *
+             *  we need to store the code.pendingStatPos value before generating
+             *  the finalizer.
+             */
+            int tmpPos = code.pendingStatPos;
             targetEnv = unwind(env.enclMethod, env);
+            code.pendingStatPos = tmpPos;
             code.emitop0(return_);
         }
         endFinalizerGaps(env, targetEnv);
@@ -1801,7 +1828,6 @@ public class Gen extends JCTree.Visitor {
                 msym.externalType(types).getParameterTypes());
         if (!msym.isDynamic()) {
             code.statBegin(tree.pos);
-            code.markStatBegin();
         }
         result = m.invoke();
     }

@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 import javax.lang.model.element.Name;
@@ -41,12 +42,14 @@ import static com.sun.tools.doclint.HtmlTag.Attr.*;
  *
  * The intent of this class is to embody the semantics of W3C HTML 4.01
  * to the extent supported/used by javadoc.
+ * In time, we may wish to transition javadoc and doclint to using HTML 5.
  *
  * This is derivative of com.sun.tools.doclets.formats.html.markup.HtmlTag.
  * Eventually, these two should be merged back together, and possibly made
  * public.
  *
  * @see <a href="http://www.w3.org/TR/REC-html40/">HTML 4.01 Specification</a>
+ * @see <a href="http://www.w3.org/TR/html5/">HTML 5 Specification</a>
  * @author Bhavesh Patel
  * @author Jonathan Gibbons (revised)
  */
@@ -118,7 +121,8 @@ public enum HtmlTag {
 
     HEAD(BlockType.OTHER, EndKind.REQUIRED),
 
-    HR(BlockType.BLOCK, EndKind.NONE),
+    HR(BlockType.BLOCK, EndKind.NONE,
+            attrs(AttrKind.OK, WIDTH)), // OK in 4.01; not allowed in 5
 
     HTML(BlockType.OTHER, EndKind.REQUIRED),
 
@@ -131,7 +135,8 @@ public enum HtmlTag {
             attrs(AttrKind.USE_CSS, ALIGN, HSPACE, VSPACE, BORDER)),
 
     LI(BlockType.LIST_ITEM, EndKind.OPTIONAL,
-            EnumSet.of(Flag.ACCEPTS_BLOCK, Flag.ACCEPTS_INLINE)),
+            EnumSet.of(Flag.ACCEPTS_BLOCK, Flag.ACCEPTS_INLINE),
+            attrs(AttrKind.OK, VALUE)),
 
     LINK(BlockType.OTHER, EndKind.NONE),
 
@@ -150,7 +155,7 @@ public enum HtmlTag {
 
     OL(BlockType.BLOCK, EndKind.REQUIRED,
             EnumSet.of(Flag.EXPECT_CONTENT),
-            attrs(AttrKind.USE_CSS, START, TYPE)){
+            attrs(AttrKind.OK, START, TYPE)) {
         @Override
         public boolean accepts(HtmlTag t) {
             return (t == LI);
@@ -194,8 +199,8 @@ public enum HtmlTag {
     TABLE(BlockType.BLOCK, EndKind.REQUIRED,
             EnumSet.of(Flag.EXPECT_CONTENT),
             attrs(AttrKind.OK, SUMMARY, Attr.FRAME, RULES, BORDER,
-                CELLPADDING, CELLSPACING),
-            attrs(AttrKind.USE_CSS, ALIGN, WIDTH, BGCOLOR)) {
+                CELLPADDING, CELLSPACING, WIDTH), // width OK in 4.01; not allowed in 5
+            attrs(AttrKind.USE_CSS, ALIGN, BGCOLOR)) {
         @Override
         public boolean accepts(HtmlTag t) {
             switch (t) {
@@ -265,7 +270,7 @@ public enum HtmlTag {
 
     UL(BlockType.BLOCK, EndKind.REQUIRED,
             EnumSet.of(Flag.EXPECT_CONTENT),
-            attrs(AttrKind.USE_CSS, COMPACT, TYPE)){
+            attrs(AttrKind.OK, COMPACT, TYPE)) { // OK in 4.01; not allowed in 5
         @Override
         public boolean accepts(HtmlTag t) {
             return (t == LI);
@@ -339,11 +344,12 @@ public enum HtmlTag {
         TARGET,
         TYPE,
         VALIGN,
+        VALUE,
         VSPACE,
         WIDTH;
 
         public String getText() {
-            return name().toLowerCase();
+            return toLowerCase(name());
         }
 
         static final Map<String,Attr> index = new HashMap<String,Attr>();
@@ -422,11 +428,11 @@ public enum HtmlTag {
     }
 
     public String getText() {
-        return name().toLowerCase();
+        return toLowerCase(name());
     }
 
     public Attr getAttr(Name attrName) {
-        return Attr.index.get(attrName.toString().toLowerCase());
+        return Attr.index.get(toLowerCase(attrName.toString()));
     }
 
     public AttrKind getAttrKind(Name attrName) {
@@ -448,6 +454,10 @@ public enum HtmlTag {
     }
 
     static HtmlTag get(Name tagName) {
-        return index.get(tagName.toString().toLowerCase());
+        return index.get(toLowerCase(tagName.toString()));
+    }
+
+    private static String toLowerCase(String s) {
+        return s.toLowerCase(Locale.US);
     }
 }

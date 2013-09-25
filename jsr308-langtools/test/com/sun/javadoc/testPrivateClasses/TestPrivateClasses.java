@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,7 +23,7 @@
 
 /*
  * @test
- * @bug      4780441 4874845 4978816
+ * @bug      4780441 4874845 4978816 8014017
  * @summary  Make sure that when the -private flag is not used, members
  *           inherited from package private class are documented in the child.
  *
@@ -33,17 +33,19 @@
  *
  *           Make sure that when a private interface method with generic parameters
  *           is implemented, the comments can be inherited properly.
+ *
+ *           Make sure when no modifier appear in the class signature, the
+ *           signature is displayed correctly without extra space at the beginning.
  * @author   jamieh
  * @library  ../lib/
- * @build    JavadocTester
- * @build    TestPrivateClasses
+ * @build    JavadocTester TestPrivateClasses
  * @run main TestPrivateClasses
  */
 
 public class TestPrivateClasses extends JavadocTester {
 
     //Test information.
-    private static final String BUG_ID = "4780441-4874845-4978816";
+    private static final String BUG_ID = "4780441-4874845-4978816-8014017";
 
     //Javadoc arguments.
     private static final String[] ARGS1 = new String[] {
@@ -110,12 +112,12 @@ public class TestPrivateClasses extends JavadocTester {
     private static final String[][] NEGATED_TEST1 = {
        // Should not document that a method overrides method from private class.
       {BUG_ID + "-1" + FS + "pkg" + FS + "PublicChild.html",
-        "<strong>Overrides:</strong>"},
+        "<span class=\"strong\">Overrides:</span>"},
       // Should not document that a method specified by private interface.
       {BUG_ID + "-1" + FS + "pkg" + FS + "PublicChild.html",
-        "<strong>Specified by:</strong>"},
+        "<span class=\"strong\">Specified by:</span>"},
       {BUG_ID + "-1" + FS + "pkg" + FS + "PublicInterface.html",
-        "<strong>Specified by:</strong>"},
+        "<span class=\"strong\">Specified by:</span>"},
       // Should not mention that any documentation was copied.
       {BUG_ID + "-1" + FS + "pkg" + FS + "PublicChild.html",
         "Description copied from"},
@@ -137,7 +139,7 @@ public class TestPrivateClasses extends JavadocTester {
         //Do not inherit private interface method with generic parameters.
         //This method has been implemented.
         {BUG_ID + "-1" + FS + "pkg2" + FS + "C.html",
-            "<strong><a href=\"../pkg2/I.html#hello(T)\">hello</a></strong>"},
+            "<span class=\"strong\"><a href=\"../pkg2/I.html#hello(T)\">hello</a></span>"},
     };
 
     // Test output when -private flag is used.
@@ -174,14 +176,14 @@ public class TestPrivateClasses extends JavadocTester {
         },
         // Should document that a method overrides method from private class.
        {BUG_ID + "-2" + FS + "pkg" + FS + "PublicChild.html",
-            "<dt><strong>Overrides:</strong></dt>" + NL +
+            "<dt><span class=\"strong\">Overrides:</span></dt>" + NL +
             "<dd><code><a href=\"../pkg/PrivateParent.html#methodOverridenFromParent(char[], int, T, V, java.util.List)\">" +
             "methodOverridenFromParent</a></code>&nbsp;in class&nbsp;<code>" +
             "<a href=\"../pkg/PrivateParent.html\" title=\"class in pkg\">" +
             "PrivateParent</a></code></dd>"},
        // Should document that a method is specified by private interface.
        {BUG_ID + "-2" + FS + "pkg" + FS + "PublicChild.html",
-            "<dt><strong>Specified by:</strong></dt>" + NL +
+            "<dt><span class=\"strong\">Specified by:</span></dt>" + NL +
             "<dd><code><a href=\"../pkg/PrivateInterface.html#methodInterface(int)\">" +
             "methodInterface</a></code>&nbsp;in interface&nbsp;<code>" +
             "<a href=\"../pkg/PrivateInterface.html\" title=\"interface in pkg\">" +
@@ -225,17 +227,28 @@ public class TestPrivateClasses extends JavadocTester {
       //Since private flag is used, we can document that private interface method
       //with generic parameters has been implemented.
       {BUG_ID + "-2" + FS + "pkg2" + FS + "C.html",
-            "<strong>Description copied from interface:&nbsp;<code>" +
-            "<a href=\"../pkg2/I.html#hello(T)\">I</a></code></strong>"},
+            "<span class=\"strong\">Description copied from interface:&nbsp;<code>" +
+            "<a href=\"../pkg2/I.html#hello(T)\">I</a></code></span>"},
 
       {BUG_ID + "-2" + FS + "pkg2" + FS + "C.html",
-            "<dt><strong>Specified by:</strong></dt>" + NL +
+            "<dt><span class=\"strong\">Specified by:</span></dt>" + NL +
             "<dd><code><a href=\"../pkg2/I.html#hello(T)\">hello</a></code>" +
             "&nbsp;in interface&nbsp;<code>" +
             "<a href=\"../pkg2/I.html\" title=\"interface in pkg2\">I</a>" +
             "&lt;java.lang.String&gt;</code></dd>"},
+
+      //Make sure when no modifier appear in the class signature, the
+      //signature is displayed correctly without extra space at the beginning.
+      {BUG_ID + "-2" + FS + "pkg" + FS + "PrivateParent.html",
+            "<pre>class <span class=\"strong\">PrivateParent</span>"},
+
+      {BUG_ID + "-2" + FS + "pkg" + FS + "PublicChild.html",
+            "<pre>public class <span class=\"strong\">PublicChild</span>"},
     };
-    private static final String[][] NEGATED_TEST2 = NO_TEST;
+    private static final String[][] NEGATED_TEST2 = {
+        {BUG_ID + "-2" + FS + "pkg" + FS + "PrivateParent.html",
+            "<pre> class <span class=\"strong\">PrivateParent</span>"},
+    };
 
     /**
      * The entry point of the test.

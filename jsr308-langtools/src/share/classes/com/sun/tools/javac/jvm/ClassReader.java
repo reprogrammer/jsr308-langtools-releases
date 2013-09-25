@@ -1906,12 +1906,11 @@ public class ClassReader implements Completer {
             JavaFileObject previousClassFile = currentClassFile;
             try {
                 currentClassFile = classFile;
-                Annotations annotations = sym.annotations;
                 List<Attribute.Compound> newList = deproxyCompoundList(l);
-                if (annotations.pendingCompletion()) {
-                    annotations.setDeclarationAttributes(newList);
+                if (sym.annotationsPendingCompletion()) {
+                    sym.setDeclarationAttributes(newList);
                 } else {
-                    annotations.append(newList);
+                    sym.appendAttributes(newList);
                 }
             } finally {
                 currentClassFile = previousClassFile;
@@ -1948,7 +1947,7 @@ public class ClassReader implements Completer {
                 if (debugJSR308)
                     System.out.println("TA: reading: adding " + newList
                       + " to symbol " + sym + " in " + log.currentSourceFile());
-                sym.annotations.setTypeAttributes(newList.prependList(sym.getRawTypeAttributes()));
+                sym.setTypeAttributes(newList.prependList(sym.getRawTypeAttributes()));
             } finally {
                 currentClassFile = previousClassFile;
             }
@@ -1999,6 +1998,9 @@ public class ClassReader implements Completer {
                                       syms.methodClass);
         }
         MethodSymbol m = new MethodSymbol(flags, name, type, currentOwner);
+        if (types.isSignaturePolymorphic(m)) {
+            m.flags_field |= SIGNATURE_POLYMORPHIC;
+        }
         if (saveParameterNames)
             initParameterNames(m);
         Symbol prevOwner = currentOwner;

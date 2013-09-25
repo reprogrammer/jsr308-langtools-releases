@@ -1,6 +1,31 @@
 This file lists changes made to the IMPLEMENTATION.
 For changes to the SPECIFICATION, see file jsr308-changes.html.
 
+Version 1.6.7, 28 Aug 2013
+
+Base build
+  Updated to OpenJDK 8 tl/langtools and type-annotations/langtools
+  as of 27 Aug 2013.
+
+----------------------------------------------------------------------
+Version 1.6.6, 1 Aug 2013
+
+Base build
+  Updated to OpenJDK 8 tl/langtools and type-annotations/langtools
+  as of 31 Jul 2013.
+
+----------------------------------------------------------------------
+Version 1.6.5, 1 Jul 2013
+
+Functionality:
+  Add -XDTA:noannotationsincomments option to turn off annotations
+  in comments.
+
+Base build
+  Updated to OpenJDK 8 tl/langtools and type-annotations/langtools
+  as of 30 Jun 2013.
+
+----------------------------------------------------------------------
 Version 1.6.4, 1 Jun 2013
 
 Base build
@@ -388,7 +413,7 @@ Base build
 Version 0.9.3, 23 Jun 2009
 
 Bug fixes
-  Fixed a bug related to exposing package annotation to type checkers
+  Fixed a bug related to exposing package annotation to type-checkers
 
 Base build
   Updated to OpenJDK langtools build 61

@@ -363,6 +363,7 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
                 throw new Abort();
         }
         source = Source.instance(context);
+        Target target = Target.instance(context);
         attr = Attr.instance(context);
         chk = Check.instance(context);
         gen = Gen.instance(context);
@@ -403,6 +404,8 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
             }
         }
 
+        checkForObsoleteOptions(target);
+
         verboseCompilePolicy = options.isSet("verboseCompilePolicy");
 
         if (attrParseOnly)
@@ -430,6 +433,26 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
 
         if (options.isUnset("oldDiags"))
             log.setDiagnosticFormatter(RichDiagnosticFormatter.instance(context));
+    }
+
+    private void checkForObsoleteOptions(Target target) {
+        // Unless lint checking on options is disabled, check for
+        // obsolete source and target options.
+        boolean obsoleteOptionFound = false;
+        if (options.isUnset(XLINT_CUSTOM, "-" + LintCategory.OPTIONS.option)) {
+            if (source.compareTo(Source.JDK1_5) <= 0) {
+                log.warning(LintCategory.OPTIONS, "option.obsolete.source", source.name);
+                obsoleteOptionFound = true;
+            }
+
+            if (target.compareTo(Target.JDK1_5) <= 0) {
+                log.warning(LintCategory.OPTIONS, "option.obsolete.target", target.name);
+                obsoleteOptionFound = true;
+            }
+
+            if (obsoleteOptionFound)
+                log.warning(LintCategory.OPTIONS, "option.obsolete.suppression");
+        }
     }
 
     /* Switches:
@@ -1282,6 +1305,10 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
                 return;
 
             if (relax || compileStates.isDone(env, CompileState.FLOW)) {
+                // In relaxed mode, mark FLOW as done to prevent infinite loops.
+                if (!compileStates.isDone(env, CompileState.FLOW)) {
+                    compileStates.put(env, CompileState.FLOW);
+                }
                 results.add(env);
                 return;
             }
@@ -1435,11 +1462,13 @@ public class JavaCompiler implements ClassReader.SourceCompleter {
             env.tree = transTypes.translateTopLevelClass(env.tree, localMake);
             compileStates.put(env, CompileState.TRANSTYPES);
 
-            if (shouldStop(CompileState.UNLAMBDA))
-                return;
+            if (source.allowLambda()) {
+                if (shouldStop(CompileState.UNLAMBDA))
+                    return;
 
-            env.tree = lambdaToMethod.translateTopLevelClass(env, env.tree, localMake);
-            compileStates.put(env, CompileState.UNLAMBDA);
+                env.tree = lambdaToMethod.translateTopLevelClass(env, env.tree, localMake);
+                compileStates.put(env, CompileState.UNLAMBDA);
+            }
 
             if (shouldStop(CompileState.LOWER))
                 return;
