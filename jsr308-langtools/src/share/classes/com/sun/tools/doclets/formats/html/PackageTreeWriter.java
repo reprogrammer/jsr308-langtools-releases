@@ -105,7 +105,7 @@ public class PackageTreeWriter extends AbstractTreeWriter {
             configuration.standardmessage.error(
                         "doclet.exception_encountered",
                         exc.toString(), path.getPath());
-            throw new DocletAbortException();
+            throw new DocletAbortException(exc);
         }
     }
 
@@ -155,7 +155,7 @@ public class PackageTreeWriter extends AbstractTreeWriter {
      * @param div the content tree to which the link will be added
      */
     protected void addLinkToMainTree(Content div) {
-        Content span = HtmlTree.SPAN(HtmlStyle.strong,
+        Content span = HtmlTree.SPAN(HtmlStyle.packageHierarchyLabel,
                 getResource("doclet.Package_Hierarchies"));
         div.addContent(span);
         HtmlTree ul = new HtmlTree (HtmlTag.UL);

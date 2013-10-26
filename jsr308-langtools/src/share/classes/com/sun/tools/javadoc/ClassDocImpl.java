@@ -128,7 +128,14 @@ public class ClassDocImpl extends ProgramElementDocImpl implements ClassDoc {
             try {
                 return clazz.flags();
             } catch (CompletionFailure ex) {
-                // quietly ignore completion failures
+                /* Quietly ignore completion failures.
+                 * Note that a CompletionFailure can only
+                 * occur as a result of calling complete(),
+                 * which will always remove the current
+                 * completer, leaving it to be null or
+                 * follow-up completer. Thus the loop
+                 * is guaranteed to eventually terminate.
+                 */
             }
         }
     }
@@ -282,7 +289,7 @@ public class ClassDocImpl extends ProgramElementDocImpl implements ClassDoc {
     }
 
     public boolean isFunctionalInterface() {
-        return env.types.isFunctionalInterface(tsym);
+        return env.types.isFunctionalInterface(tsym) && env.source.allowLambda();
     }
 
     /**
@@ -612,8 +619,10 @@ public class ClassDocImpl extends ProgramElementDocImpl implements ClassDoc {
         Names names = tsym.name.table.names;
         List<MethodDocImpl> methods = List.nil();
         for (Scope.Entry e = tsym.members().elems; e != null; e = e.sibling) {
-            if (e.sym != null &&
-                e.sym.kind == Kinds.MTH && e.sym.name != names.init) {
+            if (e.sym != null
+                && e.sym.kind == Kinds.MTH
+                && e.sym.name != names.init
+                && e.sym.name != names.clinit) {
                 MethodSymbol s = (MethodSymbol)e.sym;
                 if (!filter || env.shouldDocument(s)) {
                     methods = methods.prepend(env.getMethodDoc(s));

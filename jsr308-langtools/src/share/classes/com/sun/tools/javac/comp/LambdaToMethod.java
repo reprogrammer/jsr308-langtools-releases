@@ -30,6 +30,7 @@ import com.sun.tools.javac.tree.JCTree.JCMemberReference.ReferenceKind;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.tree.TreeTranslator;
 import com.sun.tools.javac.code.Attribute;
+import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Kinds;
 import com.sun.tools.javac.code.Scope;
 import com.sun.tools.javac.code.Symbol;
@@ -126,12 +127,11 @@ public class LambdaToMethod extends TreeTranslator {
         private final VarSymbol deserParamSym;
 
         private KlassInfo(Symbol kSym) {
-            appendedMethodList = ListBuffer.lb();
+            appendedMethodList = new ListBuffer<>();
             deserializeCases = new HashMap<String, ListBuffer<JCStatement>>();
-            long flags = PRIVATE | STATIC | SYNTHETIC;
             MethodType type = new MethodType(List.of(syms.serializedLambdaType), syms.objectType,
                     List.<Type>nil(), syms.methodClass);
-            deserMethodSym = makeSyntheticMethod(flags, names.deserializeLambda, type, kSym);
+            deserMethodSym = makePrivateSyntheticMethod(STATIC, names.deserializeLambda, type, kSym);
             deserParamSym = new VarSymbol(FINAL, names.fromString("lambda"),
                     syms.serializedLambdaType, deserMethodSym);
         }
@@ -153,6 +153,8 @@ public class LambdaToMethod extends TreeTranslator {
         return instance;
     }
 
+    private Attr attr;
+
     private LambdaToMethod(Context context) {
         diags = JCDiagnostic.Factory.instance(context);
         log = Log.instance(context);
@@ -166,6 +168,7 @@ public class LambdaToMethod extends TreeTranslator {
         analyzer = new LambdaAnalyzerPreprocessor();
         Options options = Options.instance(context);
         dumpLambdaToMethodStats = options.isSet("dumpLambdaToMethodStats");
+        attr = Attr.instance(context);
     }
     // </editor-fold>
 
@@ -188,7 +191,7 @@ public class LambdaToMethod extends TreeTranslator {
     }
 
     <T extends JCTree> List<T> translate(List<T> trees, TranslationContext<?> newContext) {
-        ListBuffer<T> buf = ListBuffer.lb();
+        ListBuffer<T> buf = new ListBuffer<>();
         for (T tree : trees) {
             buf.append(translate(tree, newContext));
         }
@@ -301,7 +304,7 @@ public class LambdaToMethod extends TreeTranslator {
         // * the "this" argument if it is an instance method
         // * enclosing locals captured by the lambda expression
 
-        ListBuffer<JCExpression> syntheticInits = ListBuffer.lb();
+        ListBuffer<JCExpression> syntheticInits = new ListBuffer<>();
 
         if (!sym.isStatic()) {
             syntheticInits.append(makeThis(
@@ -368,6 +371,7 @@ public class LambdaToMethod extends TreeTranslator {
 
             case BOUND:             /** Expr :: instMethod */
                 init = tree.getQualifierExpression();
+                init = attr.makeNullCheck(init);
                 break;
 
             case UNBOUND:           /** Type :: instMethod */
@@ -465,7 +469,7 @@ public class LambdaToMethod extends TreeTranslator {
         } else if (isLambda_void && isTarget_Void) {
             //void to Void conversion:
             // BODY; return null;
-            ListBuffer<JCStatement> stats = ListBuffer.lb();
+            ListBuffer<JCStatement> stats = new ListBuffer<>();
             stats.append(make.Exec(expr));
             stats.append(make.Return(make.Literal(BOT, null).setType(syms.botType)));
             return make.Block(0, stats.toList());
@@ -527,8 +531,8 @@ public class LambdaToMethod extends TreeTranslator {
     }
 
     private JCMethodDecl makeDeserializeMethod(Symbol kSym) {
-        ListBuffer<JCCase> cases = ListBuffer.lb();
-        ListBuffer<JCBreak> breaks = ListBuffer.lb();
+        ListBuffer<JCCase> cases = new ListBuffer<>();
+        ListBuffer<JCBreak> breaks = new ListBuffer<>();
         for (Map.Entry<String, ListBuffer<JCStatement>> entry : kInfo.deserializeCases.entrySet()) {
             JCBreak br = make.Break(null);
             breaks.add(br);
@@ -590,11 +594,11 @@ public class LambdaToMethod extends TreeTranslator {
         String implMethodSignature = methodSig(types.erasure(refSym.type));
 
         JCExpression kindTest = eqTest(syms.intType, deserGetter("getImplMethodKind", syms.intType), make.Literal(implMethodKind));
-        ListBuffer<JCExpression> serArgs = ListBuffer.lb();
+        ListBuffer<JCExpression> serArgs = new ListBuffer<>();
         int i = 0;
         for (Type t : indyType.getParameterTypes()) {
-            List<JCExpression> indexAsArg = ListBuffer.<JCExpression>lb().append(make.Literal(i)).toList();
-            List<Type> argTypes = ListBuffer.<Type>lb().append(syms.intType).toList();
+            List<JCExpression> indexAsArg = new ListBuffer<JCExpression>().append(make.Literal(i)).toList();
+            List<Type> argTypes = new ListBuffer<Type>().append(syms.intType).toList();
             serArgs.add(make.TypeCast(types.erasure(t), deserGetter("getCapturedArg", syms.objectType, argTypes, indexAsArg)));
             ++i;
         }
@@ -614,7 +618,7 @@ public class LambdaToMethod extends TreeTranslator {
                 null);
         ListBuffer<JCStatement> stmts = kInfo.deserializeCases.get(implMethodName);
         if (stmts == null) {
-            stmts = ListBuffer.lb();
+            stmts = new ListBuffer<>();
             kInfo.deserializeCases.put(implMethodName, stmts);
         }
         /****
@@ -667,8 +671,8 @@ public class LambdaToMethod extends TreeTranslator {
     /**
      * Create new synthetic method with given flags, name, type, owner
      */
-    private MethodSymbol makeSyntheticMethod(long flags, Name name, Type type, Symbol owner) {
-        return new MethodSymbol(flags | SYNTHETIC, name, type, owner);
+    private MethodSymbol makePrivateSyntheticMethod(long flags, Name name, Type type, Symbol owner) {
+        return new MethodSymbol(flags | SYNTHETIC | PRIVATE, name, type, owner);
     }
 
     /**
@@ -724,8 +728,8 @@ public class LambdaToMethod extends TreeTranslator {
 
         private final JCMemberReference tree;
         private final ReferenceTranslationContext localContext;
-        private final ListBuffer<JCExpression> args = ListBuffer.lb();
-        private final ListBuffer<JCVariableDecl> params = ListBuffer.lb();
+        private final ListBuffer<JCExpression> args = new ListBuffer<>();
+        private final ListBuffer<JCVariableDecl> params = new ListBuffer<>();
 
         MemberReferenceBridger(JCMemberReference tree, ReferenceTranslationContext localContext) {
             this.tree = tree;
@@ -930,7 +934,7 @@ public class LambdaToMethod extends TreeTranslator {
                 typeToMethodType(tree.getDescriptorType(types)));
 
         //computed indy arg types
-        ListBuffer<Type> indy_args_types = ListBuffer.lb();
+        ListBuffer<Type> indy_args_types = new ListBuffer<>();
         for (JCExpression arg : indy_args) {
             indy_args_types.append(arg.type);
         }
@@ -945,7 +949,7 @@ public class LambdaToMethod extends TreeTranslator {
                 names.altMetafactory : names.metafactory;
 
         if (context.needsAltMetafactory()) {
-            ListBuffer<Object> markers = ListBuffer.lb();
+            ListBuffer<Object> markers = new ListBuffer<>();
             for (Type t : tree.targets.tail) {
                 if (t.tsym != syms.serializableType.tsym) {
                     markers.append(t.tsym);
@@ -1023,7 +1027,7 @@ public class LambdaToMethod extends TreeTranslator {
     }
     //where
     private List<Type> bsmStaticArgToTypes(List<Object> args) {
-        ListBuffer<Type> argtypes = ListBuffer.lb();
+        ListBuffer<Type> argtypes = new ListBuffer<>();
         for (Object arg : args) {
             argtypes.append(bsmStaticArgToType(arg));
         }
@@ -1063,12 +1067,12 @@ public class LambdaToMethod extends TreeTranslator {
         } else {
             if (refSym.isStatic()) {
                 return ClassFile.REF_invokeStatic;
+            } else if ((refSym.flags() & PRIVATE) != 0) {
+                return ClassFile.REF_invokeSpecial;
             } else if (refSym.enclClass().isInterface()) {
                 return ClassFile.REF_invokeInterface;
             } else {
-                return (refSym.flags() & PRIVATE) != 0 ?
-                        ClassFile.REF_invokeSpecial :
-                        ClassFile.REF_invokeVirtual;
+                return ClassFile.REF_invokeVirtual;
             }
         }
     }
@@ -1312,7 +1316,9 @@ public class LambdaToMethod extends TreeTranslator {
                 ListBuffer<JCVariableDecl> paramBuff = new ListBuffer<JCVariableDecl>();
                 int i = 0;
                 for (List<Type> l = ptypes; l.nonEmpty(); l = l.tail) {
-                    paramBuff.append(make.Param(make.paramName(i++), l.head, owner));
+                    JCVariableDecl param = make.Param(make.paramName(i++), l.head, owner);
+                    param.sym.pos = tree.pos;
+                    paramBuff.append(param);
                 }
                 List<JCVariableDecl> params = paramBuff.toList();
 
@@ -1476,7 +1482,7 @@ public class LambdaToMethod extends TreeTranslator {
                 //static clinits are generated in Gen - so we need to fake them
                 Symbol clinit = clinits.get(csym);
                 if (clinit == null) {
-                    clinit = makeSyntheticMethod(STATIC,
+                    clinit = makePrivateSyntheticMethod(STATIC,
                             names.clinit,
                             new MethodType(List.<Type>nil(), syms.voidType, List.<Type>nil(), syms.methodClass),
                             csym);
@@ -1725,7 +1731,7 @@ public class LambdaToMethod extends TreeTranslator {
                     self = ((JCVariableDecl)frame.tree).sym;
                 }
                 Name name = isSerializable() ? serializedLambdaName(owner) : lambdaName();
-                this.translatedSym = makeSyntheticMethod(0, name, null, owner.enclClass());
+                this.translatedSym = makePrivateSyntheticMethod(0, name, null, owner.enclClass());
                 if (dumpLambdaToMethodStats) {
                     log.note(tree, "lambda.stat", needsAltMetafactory(), translatedSym);
                 }
@@ -1745,9 +1751,14 @@ public class LambdaToMethod extends TreeTranslator {
                         // Just erase the type var
                         ret = new VarSymbol(sym.flags(), name,
                                 types.erasure(sym.type), sym.owner);
+
+                        /* this information should also be kept for LVT generation at Gen
+                         * a Symbol with pos < startPos won't be tracked.
+                         */
+                        ((VarSymbol)ret).pos = ((VarSymbol)sym).pos;
                         break;
                     case CAPTURED_VAR:
-                        ret = new VarSymbol(SYNTHETIC | FINAL, name, types.erasure(sym.type), translatedSym) {
+                        ret = new VarSymbol(SYNTHETIC | FINAL | PARAMETER, name, types.erasure(sym.type), translatedSym) {
                             @Override
                             public Symbol baseSymbol() {
                                 //keep mapping with original captured symbol
@@ -1755,8 +1766,17 @@ public class LambdaToMethod extends TreeTranslator {
                             }
                         };
                         break;
+                    case LOCAL_VAR:
+                        ret = new VarSymbol(FINAL, name, types.erasure(sym.type), translatedSym);
+                        ((VarSymbol) ret).pos = ((VarSymbol) sym).pos;
+                        break;
+                    case PARAM:
+                        ret = new VarSymbol(FINAL | PARAMETER, name, types.erasure(sym.type), translatedSym);
+                        ((VarSymbol) ret).pos = ((VarSymbol) sym).pos;
+                        break;
                     default:
                         ret = makeSyntheticVar(FINAL, name, types.erasure(sym.type), translatedSym);
+                        ((VarSymbol) ret).pos = ((VarSymbol) sym).pos;
                 }
                 if (ret != sym) {
                     ret.setDeclarationAttributes(sym.getRawAttributes());
@@ -1836,13 +1856,13 @@ public class LambdaToMethod extends TreeTranslator {
 
                 // If instance access isn't needed, make it static.
                 // Interface instance methods must be default methods.
-                // Awaiting VM channges, default methods are public
-                translatedSym.flags_field = SYNTHETIC |
-                        ((inInterface && thisReferenced)? PUBLIC : PRIVATE) |
+                // Lambda methods are private synthetic.
+                translatedSym.flags_field = SYNTHETIC | LAMBDA_METHOD |
+                        PRIVATE |
                         (thisReferenced? (inInterface? DEFAULT : 0) : STATIC);
 
                 //compute synthetic params
-                ListBuffer<JCVariableDecl> params = ListBuffer.lb();
+                ListBuffer<JCVariableDecl> params = new ListBuffer<>();
 
                 // The signature of the method is augmented with the following
                 // synthetic parameters:
@@ -1881,7 +1901,7 @@ public class LambdaToMethod extends TreeTranslator {
                 super(tree);
                 this.isSuper = tree.hasKind(ReferenceKind.SUPER);
                 this.bridgeSym = needsBridge()
-                        ? makeSyntheticMethod(isSuper ? 0 : STATIC,
+                        ? makePrivateSyntheticMethod(isSuper ? 0 : STATIC,
                                               lambdaName().append(names.fromString("$bridge")), null,
                                               owner.enclClass())
                         : null;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -79,7 +79,7 @@ public class SingleIndexWriter extends AbstractIndexWriter {
             configuration.standardmessage.error(
                         "doclet.exception_encountered",
                         exc.toString(), filename);
-            throw new DocletAbortException();
+            throw new DocletAbortException(exc);
         }
     }
 
@@ -115,7 +115,8 @@ public class SingleIndexWriter extends AbstractIndexWriter {
         for (int i = 0; i < indexbuilder.elements().length; i++) {
             String unicode = (indexbuilder.elements())[i].toString();
             contentTree.addContent(
-                    getHyperLink("_" + unicode + "_", new StringContent(unicode)));
+                    getHyperLink(getNameForIndex(unicode),
+                    new StringContent(unicode)));
             contentTree.addContent(getSpace());
         }
     }

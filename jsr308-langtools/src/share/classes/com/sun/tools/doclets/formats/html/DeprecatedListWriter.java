@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -48,8 +48,8 @@ public class DeprecatedListWriter extends SubWriterHolderWriter {
 
     private static final String[] ANCHORS = new String[] {
         "package", "interface", "class", "enum", "exception", "error",
-        "annotation_type", "field", "method", "constructor", "enum_constant",
-        "annotation_type_member"
+        "annotation.type", "field", "method", "constructor", "enum.constant",
+        "annotation.type.member"
     };
 
     private static final String[] HEADING_KEYS = new String[] {
@@ -127,7 +127,7 @@ public class DeprecatedListWriter extends SubWriterHolderWriter {
             configuration.standardmessage.error(
                         "doclet.exception_encountered",
                         exc.toString(), filename);
-            throw new DocletAbortException();
+            throw new DocletAbortException(exc);
         }
     }
 
