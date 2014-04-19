@@ -71,6 +71,8 @@ import com.sun.source.doctree.SinceTree;
 import com.sun.source.doctree.StartElementTree;
 import com.sun.source.doctree.TextTree;
 import com.sun.source.doctree.ThrowsTree;
+import com.sun.source.doctree.UnknownBlockTagTree;
+import com.sun.source.doctree.UnknownInlineTagTree;
 import com.sun.source.doctree.ValueTree;
 import com.sun.source.doctree.VersionTree;
 import com.sun.source.util.DocTreePath;
@@ -78,6 +80,7 @@ import com.sun.source.util.DocTreePathScanner;
 import com.sun.source.util.TreePath;
 import com.sun.tools.doclint.HtmlTag.AttrKind;
 import com.sun.tools.javac.tree.DocPretty;
+import com.sun.tools.javac.util.StringUtils;
 import static com.sun.tools.doclint.Messages.Group.*;
 
 
@@ -241,7 +244,7 @@ public class Checker extends DocTreePathScanner<Void, Void> {
         markEnclosingTag(Flag.HAS_TEXT);
         String name = tree.getName().toString();
         if (name.startsWith("#")) {
-            int v = name.toLowerCase().startsWith("#x")
+            int v = StringUtils.toLowerCase(name).startsWith("#x")
                     ? Integer.parseInt(name.substring(2), 16)
                     : Integer.parseInt(name.substring(1), 10);
             if (!Entity.isValid(v)) {
@@ -839,6 +842,23 @@ public class Checker extends DocTreePathScanner<Void, Void> {
             if (isCheckedException(tl) && !foundThrows.contains(tl))
                 reportMissing("dc.missing.throws", tl);
         }
+    }
+
+    @Override
+    public Void visitUnknownBlockTag(UnknownBlockTagTree tree, Void ignore) {
+        checkUnknownTag(tree, tree.getTagName());
+        return super.visitUnknownBlockTag(tree, ignore);
+    }
+
+    @Override
+    public Void visitUnknownInlineTag(UnknownInlineTagTree tree, Void ignore) {
+        checkUnknownTag(tree, tree.getTagName());
+        return super.visitUnknownInlineTag(tree, ignore);
+    }
+
+    private void checkUnknownTag(DocTree tree, String tagName) {
+        if (env.customTags != null && !env.customTags.contains(tagName))
+            env.messages.error(SYNTAX, tree, "dc.tag.unknown", tagName);
     }
 
     @Override

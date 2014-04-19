@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2013, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2014, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -970,13 +970,6 @@ public abstract class Type extends AnnoConstruct implements TypeMirror {
 
         public boolean allInterfaces;
 
-        public enum IntersectionKind {
-            EXPLICIT,
-            IMPLICT;
-        }
-
-        public IntersectionKind intersectionKind;
-
         public IntersectionClassType(List<Type> bounds, ClassSymbol csym, boolean allInterfaces) {
             super(Type.noType, List.<Type>nil(), csym);
             this.allInterfaces = allInterfaces;
@@ -1008,9 +1001,7 @@ public abstract class Type extends AnnoConstruct implements TypeMirror {
 
         @Override
         public <R, P> R accept(TypeVisitor<R, P> v, P p) {
-            return intersectionKind == IntersectionKind.EXPLICIT ?
-                v.visitIntersection(this, p) :
-                v.visitDeclared(this, p);
+            return v.visitIntersection(this, p);
         }
     }
 
@@ -1459,7 +1450,7 @@ public abstract class Type extends AnnoConstruct implements TypeMirror {
             /** lower bounds */
             LOWER,
             /** equality constraints */
-            EQ;
+            EQ
         }
 
         /** inference variable bounds */
@@ -1481,7 +1472,7 @@ public abstract class Type extends AnnoConstruct implements TypeMirror {
 
         public UndetVar(TypeVar origin, Types types) {
             super(UNDETVAR, origin);
-            bounds = new EnumMap<InferenceBound, List<Type>>(InferenceBound.class);
+            bounds = new EnumMap<>(InferenceBound.class);
             List<Type> declaredBounds = types.getBounds(origin);
             declaredCount = declaredBounds.length();
             bounds.put(InferenceBound.UPPER, declaredBounds);
@@ -1490,8 +1481,21 @@ public abstract class Type extends AnnoConstruct implements TypeMirror {
         }
 
         public String toString() {
-            if (inst != null) return inst.toString();
-            else return qtype + "?";
+            return (inst == null) ? qtype + "?" : inst.toString();
+        }
+
+        public String debugString() {
+            String result = "inference var = " + qtype + "\n";
+            if (inst != null) {
+                result += "inst = " + inst + '\n';
+            }
+            for (InferenceBound bound: InferenceBound.values()) {
+                List<Type> aboundList = bounds.get(bound);
+                if (aboundList.size() > 0) {
+                    result += bound + " = " + aboundList + '\n';
+                }
+            }
+            return result;
         }
 
         @Override
@@ -1501,8 +1505,7 @@ public abstract class Type extends AnnoConstruct implements TypeMirror {
 
         @Override
         public Type baseType() {
-            if (inst != null) return inst.baseType();
-            else return this;
+            return (inst == null) ? this : inst.baseType();
         }
 
         /** get all bounds of a given kind */

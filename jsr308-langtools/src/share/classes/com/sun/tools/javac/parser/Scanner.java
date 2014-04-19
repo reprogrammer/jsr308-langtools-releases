@@ -55,7 +55,7 @@ public class Scanner implements Lexer {
 
     /** Buffer of saved tokens (used during lookahead)
      */
-    private List<Token> savedTokens = new ArrayList<Token>();
+    private List<Token> savedTokens = new ArrayList<>();
 
     private JavaTokenizer tokenizer;
 

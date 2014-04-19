@@ -63,8 +63,7 @@ import static javax.tools.StandardLocation.CLASS_OUTPUT;
  *  deletion without notice.</b>
  */
 public class ClassWriter extends ClassFile {
-    protected static final Context.Key<ClassWriter> classWriterKey =
-        new Context.Key<ClassWriter>();
+    protected static final Context.Key<ClassWriter> classWriterKey = new Context.Key<>();
 
     private final Options options;
 
@@ -688,7 +687,7 @@ public class ClassWriter extends ClassFile {
                     case SOURCE: break;
                     case CLASS: hasInvisible = true; break;
                     case RUNTIME: hasVisible = true; break;
-                    default: ;// /* fail soft */ throw new AssertionError(vis);
+                    default: // /* fail soft */ throw new AssertionError(vis);
                     }
                 }
             }
@@ -699,7 +698,7 @@ public class ClassWriter extends ClassFile {
             int attrIndex = writeAttr(names.RuntimeVisibleParameterAnnotations);
             databuf.appendByte(m.params.length());
             for (VarSymbol s : m.params) {
-                ListBuffer<Attribute.Compound> buf = new ListBuffer<Attribute.Compound>();
+                ListBuffer<Attribute.Compound> buf = new ListBuffer<>();
                 for (Attribute.Compound a : s.getRawAttributes())
                     if (types.getRetention(a) == RetentionPolicy.RUNTIME)
                         buf.append(a);
@@ -714,7 +713,7 @@ public class ClassWriter extends ClassFile {
             int attrIndex = writeAttr(names.RuntimeInvisibleParameterAnnotations);
             databuf.appendByte(m.params.length());
             for (VarSymbol s : m.params) {
-                ListBuffer<Attribute.Compound> buf = new ListBuffer<Attribute.Compound>();
+                ListBuffer<Attribute.Compound> buf = new ListBuffer<>();
                 for (Attribute.Compound a : s.getRawAttributes())
                     if (types.getRetention(a) == RetentionPolicy.CLASS)
                         buf.append(a);
@@ -737,14 +736,14 @@ public class ClassWriter extends ClassFile {
      */
     int writeJavaAnnotations(List<Attribute.Compound> attrs) {
         if (attrs.isEmpty()) return 0;
-        ListBuffer<Attribute.Compound> visibles = new ListBuffer<Attribute.Compound>();
-        ListBuffer<Attribute.Compound> invisibles = new ListBuffer<Attribute.Compound>();
+        ListBuffer<Attribute.Compound> visibles = new ListBuffer<>();
+        ListBuffer<Attribute.Compound> invisibles = new ListBuffer<>();
         for (Attribute.Compound a : attrs) {
             switch (types.getRetention(a)) {
             case SOURCE: break;
             case CLASS: invisibles.append(a); break;
             case RUNTIME: visibles.append(a); break;
-            default: ;// /* fail soft */ throw new AssertionError(vis);
+            default: // /* fail soft */ throw new AssertionError(vis);
             }
         }
 
@@ -798,7 +797,7 @@ public class ClassWriter extends ClassFile {
             case SOURCE: break;
             case CLASS: invisibles.append(tc); break;
             case RUNTIME: visibles.append(tc); break;
-            default: ;// /* fail soft */ throw new AssertionError(vis);
+            default: // /* fail soft */ throw new AssertionError(vis);
             }
         }
 
@@ -1017,8 +1016,8 @@ public class ClassWriter extends ClassFile {
             if (c.name != names.empty)
                 pool.put(c.name);
             if (innerClasses == null) {
-                innerClasses = new HashSet<ClassSymbol>();
-                innerClassesQueue = new ListBuffer<ClassSymbol>();
+                innerClasses = new HashSet<>();
+                innerClassesQueue = new ListBuffer<>();
                 pool.put(names.InnerClasses);
             }
             innerClasses.add(c);
@@ -1046,7 +1045,7 @@ public class ClassWriter extends ClassFile {
             }
             databuf.appendChar(pool.get(inner));
             databuf.appendChar(
-                inner.owner.kind == TYP ? pool.get(inner.owner) : 0);
+                inner.owner.kind == TYP && !inner.name.isEmpty() ? pool.get(inner.owner) : 0);
             databuf.appendChar(
                 !inner.name.isEmpty() ? pool.get(inner.name) : 0);
             databuf.appendChar(flags);
@@ -1182,9 +1181,8 @@ public class ClassWriter extends ClassFile {
         }
 
         // counter for number of generic local variables
-        int nGenericVars = 0;
-
-        if (code.varBufferSize > 0) {
+        if (code.varDebugInfo && code.varBufferSize > 0) {
+            int nGenericVars = 0;
             int alenIdx = writeAttr(names.LocalVariableTable);
             databuf.appendChar(code.getLVTSize());
             for (int i=0; i<code.varBufferSize; i++) {
@@ -1203,37 +1201,38 @@ public class ClassWriter extends ClassFile {
                     Type vartype = sym.erasure(types);
                     databuf.appendChar(pool.put(typeSig(vartype)));
                     databuf.appendChar(var.reg);
-                    if (needsLocalVariableTypeEntry(var.sym.type))
+                    if (needsLocalVariableTypeEntry(var.sym.type)) {
                         nGenericVars++;
+                    }
                 }
             }
             endAttr(alenIdx);
             acount++;
-        }
 
-        if (nGenericVars > 0) {
-            int alenIdx = writeAttr(names.LocalVariableTypeTable);
-            databuf.appendChar(nGenericVars);
-            int count = 0;
+            if (nGenericVars > 0) {
+                alenIdx = writeAttr(names.LocalVariableTypeTable);
+                databuf.appendChar(nGenericVars);
+                int count = 0;
 
-            for (int i=0; i<code.varBufferSize; i++) {
-                Code.LocalVar var = code.varBuffer[i];
-                VarSymbol sym = var.sym;
-                if (!needsLocalVariableTypeEntry(sym.type))
-                    continue;
-                for (Code.LocalVar.Range r : var.aliveRanges) {
-                    // write variable info
-                    databuf.appendChar(r.start_pc);
-                    databuf.appendChar(r.length);
-                    databuf.appendChar(pool.put(sym.name));
-                    databuf.appendChar(pool.put(typeSig(sym.type)));
-                    databuf.appendChar(var.reg);
-                    count++;
+                for (int i=0; i<code.varBufferSize; i++) {
+                    Code.LocalVar var = code.varBuffer[i];
+                    VarSymbol sym = var.sym;
+                    if (!needsLocalVariableTypeEntry(sym.type))
+                        continue;
+                    for (Code.LocalVar.Range r : var.aliveRanges) {
+                        // write variable info
+                        databuf.appendChar(r.start_pc);
+                        databuf.appendChar(r.length);
+                        databuf.appendChar(pool.put(sym.name));
+                        databuf.appendChar(pool.put(typeSig(sym.type)));
+                        databuf.appendChar(var.reg);
+                        count++;
+                    }
                 }
+                Assert.check(count == nGenericVars);
+                endAttr(alenIdx);
+                acount++;
             }
-            Assert.check(count == nGenericVars);
-            endAttr(alenIdx);
-            acount++;
         }
 
         if (code.stackMapBufferSize > 0) {
@@ -1652,7 +1651,7 @@ public class ClassWriter extends ClassFile {
         pool = c.pool;
         innerClasses = null;
         innerClassesQueue = null;
-        bootstrapMethods = new LinkedHashMap<DynamicMethod, MethodHandle>();
+        bootstrapMethods = new LinkedHashMap<>();
 
         Type supertype = types.supertype(c.type);
         List<Type> interfaces = types.interfaces(c.type);

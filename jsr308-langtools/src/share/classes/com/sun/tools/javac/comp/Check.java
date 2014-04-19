@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2013, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2014, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -64,8 +64,7 @@ import static com.sun.tools.javac.tree.JCTree.Tag.*;
  *  deletion without notice.</b>
  */
 public class Check {
-    protected static final Context.Key<Check> checkKey =
-        new Context.Key<Check>();
+    protected static final Context.Key<Check> checkKey = new Context.Key<>();
 
     private final Names names;
     private final Log log;
@@ -191,7 +190,7 @@ public class Check {
     /** A table mapping flat names of all compiled classes in this run to their
      *  symbols; maintained from outside.
      */
-    public Map<Name,ClassSymbol> compiled = new HashMap<Name, ClassSymbol>();
+    public Map<Name,ClassSymbol> compiled = new HashMap<>();
 
     /** A handler for messages about deprecated usage.
      */
@@ -528,7 +527,7 @@ public class Check {
             inferenceContext.addFreeTypeListener(List.of(req), new FreeTypeListener() {
                 @Override
                 public void typesInferred(InferenceContext inferenceContext) {
-                    checkType(pos, found, inferenceContext.asInstType(req), checkContext);
+                    checkType(pos, inferenceContext.asInstType(found), inferenceContext.asInstType(req), checkContext);
                 }
             });
         }
@@ -705,37 +704,6 @@ public class Check {
             }
         }
         return t;
-    }
-
-    // Analog of checkClassType that calls checkClassOrArrayType instead
-    Type checkClassOrArrayType(DiagnosticPosition pos,
-                               Type t, boolean noBounds) {
-        t = checkClassOrArrayType(pos, t);
-        if (noBounds && t.isParameterized()) {
-            List<Type> args = t.getTypeArguments();
-            while (args.nonEmpty()) {
-                if (args.head.hasTag(WILDCARD))
-                    return typeTagError(pos,
-                                        diags.fragment("type.req.exact"),
-                                        args.head);
-                args = args.tail;
-            }
-        }
-        return t;
-    }
-
-    /** Check that type is a reifiable class, interface or array type.
-     *  @param pos           Position to be used for error reporting.
-     *  @param t             The type to be checked.
-     */
-    Type checkReifiableReferenceType(DiagnosticPosition pos, Type t) {
-        t = checkClassOrArrayType(pos, t);
-        if (!t.isErroneous() && !types.isReifiable(t)) {
-            log.error(pos, "illegal.generic.type.for.instof");
-            return types.createErrorType(t);
-        } else {
-            return t;
-        }
     }
 
     /** Check that type is a reference type, i.e. a class, interface or array type
@@ -968,7 +936,7 @@ public class Check {
             List<Type> actuals = type.allparams();
             List<Type> args = type.getTypeArguments();
             List<Type> forms = type.tsym.type.getTypeArguments();
-            ListBuffer<Type> bounds_buf = new ListBuffer<Type>();
+            ListBuffer<Type> bounds_buf = new ListBuffer<>();
 
             // For matching pairs of actual argument types `a' and
             // formal type parameters with declared bound `b' ...
@@ -1200,7 +1168,7 @@ public class Check {
             boolean specialized;
             SpecialTreeVisitor() {
                 this.specialized = false;
-            };
+            }
 
             @Override
             public void visitTree(JCTree tree) { /* no-op */ }
@@ -1355,6 +1323,14 @@ public class Check {
         @Override
         public void visitAnnotatedType(JCAnnotatedType tree) {
             tree.underlyingType.accept(this);
+        }
+
+        @Override
+        public void visitTypeIdent(JCPrimitiveTypeTree that) {
+            if (that.type.hasTag(TypeTag.VOID)) {
+                log.error(that.pos(), "void.not.allowed.here");
+            }
+            super.visitTypeIdent(that);
         }
 
         /** Default visitor method: do nothing.
@@ -1729,7 +1705,12 @@ public class Check {
 
         // Warn if a deprecated method overridden by a non-deprecated one.
         if (!isDeprecatedOverrideIgnorable(other, origin)) {
-            checkDeprecated(TreeInfo.diagnosticPositionFor(m, tree), m, other);
+            Lint prevLint = setLint(lint.augment(m));
+            try {
+                checkDeprecated(TreeInfo.diagnosticPositionFor(m, tree), m, other);
+            } finally {
+                setLint(prevLint);
+            }
         }
     }
     // where
@@ -1841,13 +1822,13 @@ public class Check {
      *  @returns symbol from t2 that conflicts with one in t1.
      */
     private Symbol firstIncompatibility(DiagnosticPosition pos, Type t1, Type t2, Type site) {
-        Map<TypeSymbol,Type> interfaces1 = new HashMap<TypeSymbol,Type>();
+        Map<TypeSymbol,Type> interfaces1 = new HashMap<>();
         closure(t1, interfaces1);
         Map<TypeSymbol,Type> interfaces2;
         if (t1 == t2)
             interfaces2 = interfaces1;
         else
-            closure(t2, interfaces1, interfaces2 = new HashMap<TypeSymbol,Type>());
+            closure(t2, interfaces1, interfaces2 = new HashMap<>());
 
         for (Type t3 : interfaces1.values()) {
             for (Type t4 : interfaces2.values()) {
@@ -1927,7 +1908,7 @@ public class Check {
     }
     //WHERE
     boolean checkCommonOverriderIn(Symbol s1, Symbol s2, Type site) {
-        Map<TypeSymbol,Type> supertypes = new HashMap<TypeSymbol,Type>();
+        Map<TypeSymbol,Type> supertypes = new HashMap<>();
         Type st1 = types.memberType(site, s1);
         Type st2 = types.memberType(site, s2);
         closure(site, supertypes);
@@ -2253,9 +2234,6 @@ public class Check {
             seen = seen.prepend(tv);
             for (Type b : types.getBounds(tv))
                 checkNonCyclic1(pos, b, seen);
-        } else if (t.hasTag(ARRAY)) {
-            final ArrayType at = (ArrayType)t.unannotatedType();
-            checkNonCyclic1(pos, at.elemtype, seen);
         }
     }
 
@@ -2766,7 +2744,7 @@ public class Check {
     }
 
     public void validateTypeAnnotation(JCAnnotation a, boolean isTypeParameter) {
-        Assert.checkNonNull(a.type, "annotation tree hasn't been attributed yet: " + a);
+        Assert.checkNonNull(a.type); // , "annotation tree hasn't been attributed yet: " + a);
         validateAnnotationTree(a);
 
         if (a.hasTag(TYPE_ANNOTATION) &&
@@ -2805,7 +2783,7 @@ public class Check {
         validateDocumented(t.tsym, s, pos);
         validateInherited(t.tsym, s, pos);
         validateTarget(t.tsym, s, pos);
-        validateDefault(t.tsym, s, pos);
+        validateDefault(t.tsym, pos);
     }
 
     private void validateValue(TypeSymbol container, TypeSymbol contained, DiagnosticPosition pos) {
@@ -2872,14 +2850,14 @@ public class Check {
         if (containerTarget == null) {
             containerTargets = getDefaultTargetSet();
         } else {
-            containerTargets = new HashSet<Name>();
-        for (Attribute app : containerTarget.values) {
-            if (!(app instanceof Attribute.Enum)) {
-                continue; // recovery
+            containerTargets = new HashSet<>();
+            for (Attribute app : containerTarget.values) {
+                if (!(app instanceof Attribute.Enum)) {
+                    continue; // recovery
+                }
+                Attribute.Enum e = (Attribute.Enum)app;
+                containerTargets.add(e.value.name);
             }
-            Attribute.Enum e = (Attribute.Enum)app;
-            containerTargets.add(e.value.name);
-        }
         }
 
         Set<Name> containedTargets;
@@ -2887,14 +2865,14 @@ public class Check {
         if (containedTarget == null) {
             containedTargets = getDefaultTargetSet();
         } else {
-            containedTargets = new HashSet<Name>();
-        for (Attribute app : containedTarget.values) {
-            if (!(app instanceof Attribute.Enum)) {
-                continue; // recovery
+            containedTargets = new HashSet<>();
+            for (Attribute app : containedTarget.values) {
+                if (!(app instanceof Attribute.Enum)) {
+                    continue; // recovery
+                }
+                Attribute.Enum e = (Attribute.Enum)app;
+                containedTargets.add(e.value.name);
             }
-            Attribute.Enum e = (Attribute.Enum)app;
-            containedTargets.add(e.value.name);
-        }
         }
 
         if (!isTargetSubsetOf(containerTargets, containedTargets)) {
@@ -2905,7 +2883,7 @@ public class Check {
     /* get a set of names for the default target */
     private Set<Name> getDefaultTargetSet() {
         if (defaultTargets == null) {
-            Set<Name> targets = new HashSet<Name>();
+            Set<Name> targets = new HashSet<>();
             targets.add(names.ANNOTATION_TYPE);
             targets.add(names.CONSTRUCTOR);
             targets.add(names.FIELD);
@@ -2924,7 +2902,9 @@ public class Check {
 
 
     /** Checks that s is a subset of t, with respect to ElementType
-     * semantics, specifically {ANNOTATION_TYPE} is a subset of {TYPE}
+     * semantics, specifically {ANNOTATION_TYPE} is a subset of {TYPE},
+     * and {TYPE_USE} covers the set {ANNOTATION_TYPE, TYPE, TYPE_USE,
+     * TYPE_PARAMETER}.
      */
     private boolean isTargetSubsetOf(Set<Name> s, Set<Name> t) {
         // Check that all elements in s are present in t
@@ -2937,6 +2917,12 @@ public class Check {
                 } else if (n1 == names.TYPE && n2 == names.ANNOTATION_TYPE) {
                     currentElementOk = true;
                     break;
+                } else if (n1 == names.TYPE_USE &&
+                        (n2 == names.TYPE ||
+                         n2 == names.ANNOTATION_TYPE ||
+                         n2 == names.TYPE_PARAMETER)) {
+                    currentElementOk = true;
+                    break;
                 }
             }
             if (!currentElementOk)
@@ -2945,7 +2931,7 @@ public class Check {
         return true;
     }
 
-    private void validateDefault(Symbol container, Symbol contained, DiagnosticPosition pos) {
+    private void validateDefault(Symbol container, DiagnosticPosition pos) {
         // validate that all other elements of containing type has defaults
         Scope scope = container.members();
         for(Symbol elm : scope.getElements()) {
@@ -3104,7 +3090,7 @@ public class Check {
     private boolean validateAnnotation(JCAnnotation a) {
         boolean isValid = true;
         // collect an inventory of the annotation elements
-        Set<MethodSymbol> members = new LinkedHashSet<MethodSymbol>();
+        Set<MethodSymbol> members = new LinkedHashSet<>();
         for (Scope.Entry e = a.annotationType.type.tsym.members().elems;
                 e != null;
                 e = e.sibling)
@@ -3154,7 +3140,7 @@ public class Check {
         JCTree rhs = assign.rhs;
         if (!rhs.hasTag(NEWARRAY)) return false;
         JCNewArray na = (JCNewArray) rhs;
-        Set<Symbol> targets = new HashSet<Symbol>();
+        Set<Symbol> targets = new HashSet<>();
         for (JCTree elem : na.elems) {
             if (!targets.add(TreeInfo.symbol(elem))) {
                 isValid = false;
@@ -3272,7 +3258,7 @@ public class Check {
      *  constructors.
      */
     void checkCyclicConstructors(JCClassDecl tree) {
-        Map<Symbol,Symbol> callMap = new HashMap<Symbol, Symbol>();
+        Map<Symbol,Symbol> callMap = new HashMap<>();
 
         // enter each constructor this-call into the map
         for (List<JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {

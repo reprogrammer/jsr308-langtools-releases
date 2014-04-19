@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2013, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2014, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -75,8 +75,7 @@ import static com.sun.tools.javac.main.Option.*;
  */
 public class ClassReader {
     /** The context key for the class reader. */
-    protected static final Context.Key<ClassReader> classReaderKey =
-        new Context.Key<ClassReader>();
+    protected static final Context.Key<ClassReader> classReaderKey = new Context.Key<>();
 
     public static final int INITIAL_BUFFER_SIZE = 0x0fff0;
 
@@ -115,10 +114,6 @@ public class ClassReader {
    /** Lint option: warn about classfile issues
      */
     boolean lintClassfile;
-
-    /** Switch: allow default methods
-     */
-    boolean allowDefaultMethods;
 
     /** Switch: preserve parameter names from the variable table.
      */
@@ -169,15 +164,6 @@ public class ClassReader {
      *  ".java" files will not be loaded.
      */
     public SourceCompleter sourceCompleter = null;
-
-    /** A hashtable containing the encountered top-level and member classes,
-     *  indexed by flat names. The table does not contain local classes.
-     */
-    private Map<Name,ClassSymbol> classes;
-
-    /** A hashtable containing the encountered packages.
-     */
-    private Map<Name, PackageSymbol> packages;
 
     /** The current scope where type variables are entered.
      */
@@ -237,7 +223,7 @@ public class ClassReader {
     /**
      * The set of attribute names for which warnings have been generated for the current class
      */
-    Set<Name> warnedAttrs = new HashSet<Name>();
+    Set<Name> warnedAttrs = new HashSet<>();
 
     /**
      * Completer that delegates to the complete-method of this class.
@@ -249,47 +235,21 @@ public class ClassReader {
         }
     };
 
+    public Completer getCompleter() {
+        return thisCompleter;
+    }
 
     /** Get the ClassReader instance for this invocation. */
     public static ClassReader instance(Context context) {
         ClassReader instance = context.get(classReaderKey);
         if (instance == null)
-            instance = new ClassReader(context, true);
+            instance = new ClassReader(context);
         return instance;
     }
 
-    /** Initialize classes and packages, treating this as the definitive classreader. */
-    public void init(Symtab syms) {
-        init(syms, true);
-    }
-
-    /** Initialize classes and packages, optionally treating this as
-     *  the definitive classreader.
-     */
-    private void init(Symtab syms, boolean definitive) {
-        if (classes != null) return;
-
-        if (definitive) {
-            Assert.check(packages == null || packages == syms.packages);
-            packages = syms.packages;
-            Assert.check(classes == null || classes == syms.classes);
-            classes = syms.classes;
-        } else {
-            packages = new HashMap<Name, PackageSymbol>();
-            classes = new HashMap<Name, ClassSymbol>();
-        }
-
-        packages.put(names.empty, syms.rootPackage);
-        syms.rootPackage.completer = thisCompleter;
-        syms.unnamedPackage.completer = thisCompleter;
-    }
-
-    /** Construct a new class reader, optionally treated as the
-     *  definitive classreader for this invocation.
-     */
-    protected ClassReader(Context context, boolean definitive) {
-        if (definitive) context.put(classReaderKey, this);
-
+    /** Construct a new class reader. */
+    protected ClassReader(Context context) {
+        context.put(classReaderKey, this);
         names = Names.instance(context);
         syms = Symtab.instance(context);
         types = Types.instance(context);
@@ -298,7 +258,6 @@ public class ClassReader {
             throw new AssertionError("FileManager initialization error");
         diagFactory = JCDiagnostic.Factory.instance(context);
 
-        init(syms, definitive);
         log = Log.instance(context);
 
         Options options = Options.instance(context);
@@ -311,7 +270,6 @@ public class ClassReader {
         allowVarargs     = source.allowVarargs();
         allowAnnotations = source.allowAnnotations();
         allowSimplifiedVarargs = source.allowSimplifiedVarargs();
-        allowDefaultMethods = source.allowDefaultMethods();
 
         saveParameterNames = options.isSet("save-parameter-names");
         cacheCompletionFailure = options.isUnset("dev");
@@ -584,7 +542,7 @@ public class ClassReader {
         // simplified to (buf[start] == '[')
         return (buf[start] == '[' || buf[start + len - 1] == ';')
             ? (Object)sigToType(buf, start, len)
-            : (Object)enterClass(names.fromUtf(internalize(buf, start,
+            : (Object)syms.enterClass(names.fromUtf(internalize(buf, start,
                                                            len)));
     }
 
@@ -747,7 +705,7 @@ public class ClassReader {
             switch (c) {
 
             case ';': {         // end
-                ClassSymbol t = enterClass(names.fromUtf(signatureBuffer,
+                ClassSymbol t = syms.enterClass(names.fromUtf(signatureBuffer,
                                                          startSbp,
                                                          sbp - startSbp));
 
@@ -761,7 +719,7 @@ public class ClassReader {
             }
 
             case '<':           // generic arguments
-                ClassSymbol t = enterClass(names.fromUtf(signatureBuffer,
+                ClassSymbol t = syms.enterClass(names.fromUtf(signatureBuffer,
                                                          startSbp,
                                                          sbp - startSbp));
                 outer = new ClassType(outer, sigToTypes('>'), t) {
@@ -824,7 +782,7 @@ public class ClassReader {
             case '.':
                 //we have seen an enclosing non-generic class
                 if (outer != Type.noType) {
-                    t = enterClass(names.fromUtf(signatureBuffer,
+                    t = syms.enterClass(names.fromUtf(signatureBuffer,
                                                  startSbp,
                                                  sbp - startSbp));
                     outer = new ClassType(outer, List.<Type>nil(), t);
@@ -942,7 +900,8 @@ public class ClassReader {
  * Reading Attributes
  ***********************************************************************/
 
-    protected enum AttributeKind { CLASS, MEMBER };
+    protected enum AttributeKind { CLASS, MEMBER }
+
     protected abstract class AttributeReader {
         protected AttributeReader(Name name, ClassFile.Version version, Set<AttributeKind> kinds) {
             this.name = name;
@@ -983,7 +942,7 @@ public class ClassReader {
     protected Set<AttributeKind> CLASS_OR_MEMBER_ATTRIBUTE =
             EnumSet.of(AttributeKind.CLASS, AttributeKind.MEMBER);
 
-    protected Map<Name, AttributeReader> attributeReaders = new HashMap<Name, AttributeReader>();
+    protected Map<Name, AttributeReader> attributeReaders = new HashMap<>();
 
     private void initAttributeReaders() {
         AttributeReader[] readers = {
@@ -1136,7 +1095,7 @@ public class ClassReader {
                             Assert.check(c == currentOwner);
                             ct1.typarams_field = readTypeParams(nextChar());
                             ct1.supertype_field = sigToType();
-                            ListBuffer<Type> is = new ListBuffer<Type>();
+                            ListBuffer<Type> is = new ListBuffer<>();
                             while (sigp != siglimit) is.append(sigToType());
                             ct1.interfaces_field = is.toList();
                         } finally {
@@ -1215,14 +1174,14 @@ public class ClassReader {
                 }
             },
 
-            // JSR 308 local change: keep compatible with 1.5. Use V49 instead of V52.
-            new AttributeReader(names.RuntimeVisibleTypeAnnotations, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+            // JSR 308 local change: keep compatible with JDK 7. Use V51 instead of V52.
+            new AttributeReader(names.RuntimeVisibleTypeAnnotations, V51, CLASS_OR_MEMBER_ATTRIBUTE) {
                 protected void read(Symbol sym, int attrLen) {
                     attachTypeAnnotations(sym);
                 }
             },
 
-            new AttributeReader(names.RuntimeInvisibleTypeAnnotations, V49, CLASS_OR_MEMBER_ATTRIBUTE) {
+            new AttributeReader(names.RuntimeInvisibleTypeAnnotations, V51, CLASS_OR_MEMBER_ATTRIBUTE) {
                 protected void read(Symbol sym, int attrLen) {
                     attachTypeAnnotations(sym);
                 }
@@ -1281,7 +1240,7 @@ public class ClassReader {
         }
         enterTypevars(self);
         if (!missingTypeVariables.isEmpty()) {
-            ListBuffer<Type> typeVars =  new ListBuffer<Type>();
+            ListBuffer<Type> typeVars =  new ListBuffer<>();
             for (Type typevar : missingTypeVariables) {
                 typeVars.append(findTypeVar(typevar.tsym.name));
             }
@@ -1408,8 +1367,7 @@ public class ClassReader {
     void attachAnnotations(final Symbol sym) {
         int numAttributes = nextChar();
         if (numAttributes != 0) {
-            ListBuffer<CompoundAnnotationProxy> proxies =
-                new ListBuffer<CompoundAnnotationProxy>();
+            ListBuffer<CompoundAnnotationProxy> proxies = new ListBuffer<>();
             for (int i = 0; i<numAttributes; i++) {
                 CompoundAnnotationProxy proxy = readCompoundAnnotation();
                 if (proxy.type.tsym == syms.proprietaryType.tsym)
@@ -1488,19 +1446,18 @@ public class ClassReader {
         int index = poolIdx[i];
         int length = getChar(index + 1);
         if (buf[index + length + 2] != ';')
-            return enterClass(readName(i)).type;
+            return syms.enterClass(readName(i)).type;
         return readType(i);
     }
 
     CompoundAnnotationProxy readCompoundAnnotation() {
         Type t = readTypeOrClassSymbol(nextChar());
         int numFields = nextChar();
-        ListBuffer<Pair<Name,Attribute>> pairs =
-            new ListBuffer<Pair<Name,Attribute>>();
+        ListBuffer<Pair<Name,Attribute>> pairs = new ListBuffer<>();
         for (int i=0; i<numFields; i++) {
             Name name = readName(nextChar());
             Attribute value = readAttributeValue();
-            pairs.append(new Pair<Name,Attribute>(name, value));
+            pairs.append(new Pair<>(name, value));
         }
         return new CompoundAnnotationProxy(t, pairs.toList());
     }
@@ -1522,96 +1479,197 @@ public class ClassReader {
         if (!TargetType.isValidTargetTypeValue(tag))
             throw this.badClassFile("bad.type.annotation.value", String.format("0x%02X", tag));
 
-        TypeAnnotationPosition position = new TypeAnnotationPosition();
         TargetType type = TargetType.fromTargetTypeValue(tag);
-
-        position.type = type;
 
         switch (type) {
         // instanceof
-        case INSTANCEOF:
+        case INSTANCEOF: {
+            final int offset = nextChar();
+            final TypeAnnotationPosition position =
+                TypeAnnotationPosition.instanceOf(readTypePath());
+            position.offset = offset;
+            return position;
+        }
         // new expression
-        case NEW:
+        case NEW: {
+            final int offset = nextChar();
+            final TypeAnnotationPosition position =
+                TypeAnnotationPosition.newObj(readTypePath());
+            position.offset = offset;
+            return position;
+        }
         // constructor/method reference receiver
-        case CONSTRUCTOR_REFERENCE:
-        case METHOD_REFERENCE:
-            position.offset = nextChar();
-            break;
+        case CONSTRUCTOR_REFERENCE: {
+            final int offset = nextChar();
+            final TypeAnnotationPosition position =
+                TypeAnnotationPosition.constructorRef(readTypePath());
+            position.offset = offset;
+            return position;
+        }
+        case METHOD_REFERENCE: {
+            final int offset = nextChar();
+            final TypeAnnotationPosition position =
+                TypeAnnotationPosition.methodRef(readTypePath());
+            position.offset = offset;
+            return position;
+        }
         // local variable
-        case LOCAL_VARIABLE:
-        // resource variable
-        case RESOURCE_VARIABLE:
-            int table_length = nextChar();
-            position.lvarOffset = new int[table_length];
-            position.lvarLength = new int[table_length];
-            position.lvarIndex = new int[table_length];
+        case LOCAL_VARIABLE: {
+            final int table_length = nextChar();
+            final int[] newLvarOffset = new int[table_length];
+            final int[] newLvarLength = new int[table_length];
+            final int[] newLvarIndex = new int[table_length];
 
             for (int i = 0; i < table_length; ++i) {
-                position.lvarOffset[i] = nextChar();
-                position.lvarLength[i] = nextChar();
-                position.lvarIndex[i] = nextChar();
+                newLvarOffset[i] = nextChar();
+                newLvarLength[i] = nextChar();
+                newLvarIndex[i] = nextChar();
             }
-            break;
+
+            final TypeAnnotationPosition position =
+                    TypeAnnotationPosition.localVariable(readTypePath());
+            position.lvarOffset = newLvarOffset;
+            position.lvarLength = newLvarLength;
+            position.lvarIndex = newLvarIndex;
+            return position;
+        }
+        // resource variable
+        case RESOURCE_VARIABLE: {
+            final int table_length = nextChar();
+            final int[] newLvarOffset = new int[table_length];
+            final int[] newLvarLength = new int[table_length];
+            final int[] newLvarIndex = new int[table_length];
+
+            for (int i = 0; i < table_length; ++i) {
+                newLvarOffset[i] = nextChar();
+                newLvarLength[i] = nextChar();
+                newLvarIndex[i] = nextChar();
+            }
+
+            final TypeAnnotationPosition position =
+                    TypeAnnotationPosition.resourceVariable(readTypePath());
+            position.lvarOffset = newLvarOffset;
+            position.lvarLength = newLvarLength;
+            position.lvarIndex = newLvarIndex;
+            return position;
+        }
         // exception parameter
-        case EXCEPTION_PARAMETER:
-            position.exception_index = nextChar();
-            break;
+        case EXCEPTION_PARAMETER: {
+            final int exception_index = nextChar();
+            final TypeAnnotationPosition position =
+                TypeAnnotationPosition.exceptionParameter(readTypePath());
+            position.exception_index = exception_index;
+            return position;
+        }
         // method receiver
         case METHOD_RECEIVER:
-            // Do nothing
-            break;
+            return TypeAnnotationPosition.methodReceiver(readTypePath());
         // type parameter
-        case CLASS_TYPE_PARAMETER:
-        case METHOD_TYPE_PARAMETER:
-            position.parameter_index = nextByte();
-            break;
+        case CLASS_TYPE_PARAMETER: {
+            final int parameter_index = nextByte();
+            return TypeAnnotationPosition
+                .typeParameter(readTypePath(), parameter_index);
+        }
+        case METHOD_TYPE_PARAMETER: {
+            final int parameter_index = nextByte();
+            return TypeAnnotationPosition
+                .methodTypeParameter(readTypePath(), parameter_index);
+        }
         // type parameter bound
-        case CLASS_TYPE_PARAMETER_BOUND:
-        case METHOD_TYPE_PARAMETER_BOUND:
-            position.parameter_index = nextByte();
-            position.bound_index = nextByte();
-            break;
+        case CLASS_TYPE_PARAMETER_BOUND: {
+            final int parameter_index = nextByte();
+            final int bound_index = nextByte();
+            return TypeAnnotationPosition
+                .typeParameterBound(readTypePath(), parameter_index,
+                                    bound_index);
+        }
+        case METHOD_TYPE_PARAMETER_BOUND: {
+            final int parameter_index = nextByte();
+            final int bound_index = nextByte();
+            return TypeAnnotationPosition
+                .methodTypeParameterBound(readTypePath(), parameter_index,
+                                          bound_index);
+        }
         // class extends or implements clause
-        case CLASS_EXTENDS:
-            position.type_index = nextChar();
-            break;
+        case CLASS_EXTENDS: {
+            final int type_index = nextChar();
+            return TypeAnnotationPosition.classExtends(readTypePath(),
+                                                       type_index);
+        }
         // throws
-        case THROWS:
-            position.type_index = nextChar();
-            break;
+        case THROWS: {
+            final int type_index = nextChar();
+            return TypeAnnotationPosition.methodThrows(readTypePath(),
+                                                       type_index);
+        }
         // method parameter
-        case METHOD_FORMAL_PARAMETER:
-            position.parameter_index = nextByte();
-            break;
+        case METHOD_FORMAL_PARAMETER: {
+            final int parameter_index = nextByte();
+            return TypeAnnotationPosition.methodParameter(readTypePath(),
+                                                          parameter_index);
+        }
         // type cast
-        case CAST:
+        case CAST: {
+            final int offset = nextChar();
+            final int type_index = nextByte();
+            final TypeAnnotationPosition position =
+                TypeAnnotationPosition.typeCast(readTypePath(), type_index);
+            position.offset = offset;
+            return position;
+        }
         // method/constructor/reference type argument
-        case CONSTRUCTOR_INVOCATION_TYPE_ARGUMENT:
-        case METHOD_INVOCATION_TYPE_ARGUMENT:
-        case CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT:
-        case METHOD_REFERENCE_TYPE_ARGUMENT:
-            position.offset = nextChar();
-            position.type_index = nextByte();
-            break;
+        case CONSTRUCTOR_INVOCATION_TYPE_ARGUMENT: {
+            final int offset = nextChar();
+            final int type_index = nextByte();
+            final TypeAnnotationPosition position = TypeAnnotationPosition
+                .constructorInvocationTypeArg(readTypePath(), type_index);
+            position.offset = offset;
+            return position;
+        }
+        case METHOD_INVOCATION_TYPE_ARGUMENT: {
+            final int offset = nextChar();
+            final int type_index = nextByte();
+            final TypeAnnotationPosition position = TypeAnnotationPosition
+                .methodInvocationTypeArg(readTypePath(), type_index);
+            position.offset = offset;
+            return position;
+        }
+        case CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT: {
+            final int offset = nextChar();
+            final int type_index = nextByte();
+            final TypeAnnotationPosition position = TypeAnnotationPosition
+                .constructorRefTypeArg(readTypePath(), type_index);
+            position.offset = offset;
+            return position;
+        }
+        case METHOD_REFERENCE_TYPE_ARGUMENT: {
+            final int offset = nextChar();
+            final int type_index = nextByte();
+            final TypeAnnotationPosition position = TypeAnnotationPosition
+                .methodRefTypeArg(readTypePath(), type_index);
+            position.offset = offset;
+            return position;
+        }
         // We don't need to worry about these
         case METHOD_RETURN:
+            return TypeAnnotationPosition.methodReturn(readTypePath());
         case FIELD:
-            break;
+            return TypeAnnotationPosition.field(readTypePath());
         case UNKNOWN:
             throw new AssertionError("jvm.ClassReader: UNKNOWN target type should never occur!");
         default:
-            throw new AssertionError("jvm.ClassReader: Unknown target type for position: " + position);
+            throw new AssertionError("jvm.ClassReader: Unknown target type for position: " + type);
         }
+    }
 
-        { // See whether there is location info and read it
-            int len = nextByte();
-            ListBuffer<Integer> loc = new ListBuffer<>();
-            for (int i = 0; i < len * TypeAnnotationPosition.TypePathEntry.bytesPerEntry; ++i)
-                loc = loc.append(nextByte());
-            position.location = TypeAnnotationPosition.getTypePathFromBinary(loc.toList());
-        }
+    List<TypeAnnotationPosition.TypePathEntry> readTypePath() {
+        int len = nextByte();
+        ListBuffer<Integer> loc = new ListBuffer<>();
+        for (int i = 0; i < len * TypeAnnotationPosition.TypePathEntry.bytesPerEntry; ++i)
+            loc = loc.append(nextByte());
 
-        return position;
+        return TypeAnnotationPosition.getTypePathFromBinary(loc.toList());
+
     }
 
     Attribute readAttributeValue() {
@@ -1641,7 +1699,7 @@ public class ClassReader {
             return new Attribute.Class(types, readTypeOrClassSymbol(nextChar()));
         case '[': {
             int n = nextChar();
-            ListBuffer<Attribute> l = new ListBuffer<Attribute>();
+            ListBuffer<Attribute> l = new ListBuffer<>();
             for (int i=0; i<n; i++)
                 l.append(readAttributeValue());
             return new ArrayAttributeProxy(l.toList());
@@ -1736,8 +1794,7 @@ public class ClassReader {
 
         List<Attribute.Compound> deproxyCompoundList(List<CompoundAnnotationProxy> pl) {
             // also must fill in types!!!!
-            ListBuffer<Attribute.Compound> buf =
-                new ListBuffer<Attribute.Compound>();
+            ListBuffer<Attribute.Compound> buf = new ListBuffer<>();
             for (List<CompoundAnnotationProxy> l = pl; l.nonEmpty(); l=l.tail) {
                 buf.append(deproxyCompound(l.head));
             }
@@ -1745,14 +1802,12 @@ public class ClassReader {
         }
 
         Attribute.Compound deproxyCompound(CompoundAnnotationProxy a) {
-            ListBuffer<Pair<Symbol.MethodSymbol,Attribute>> buf =
-                new ListBuffer<Pair<Symbol.MethodSymbol,Attribute>>();
+            ListBuffer<Pair<Symbol.MethodSymbol,Attribute>> buf = new ListBuffer<>();
             for (List<Pair<Name,Attribute>> l = a.values;
                  l.nonEmpty();
                  l = l.tail) {
                 MethodSymbol meth = findAccessMethod(a.type, l.head.fst);
-                buf.append(new Pair<Symbol.MethodSymbol,Attribute>
-                           (meth, deproxy(meth.type.getReturnType(), l.head.snd)));
+                buf.append(new Pair<>(meth, deproxy(meth.type.getReturnType(), l.head.snd)));
             }
             return new Attribute.Compound(a.type, buf.toList());
         }
@@ -2263,7 +2318,7 @@ public class ClassReader {
             if (outer != null) { // we have a member class
                 if (name == names.empty)
                     name = names.one;
-                ClassSymbol member = enterClass(name, outer);
+                ClassSymbol member = syms.enterClass(name, outer);
                 if ((flags & STATIC) == 0) {
                     ((ClassType)member.type).setEnclosingType(outer.type);
                     if (member.erasure_field != null)
@@ -2347,77 +2402,6 @@ public class ClassReader {
  * Loading Classes
  ***********************************************************************/
 
-    /** Define a new class given its name and owner.
-     */
-    public ClassSymbol defineClass(Name name, Symbol owner) {
-        ClassSymbol c = new ClassSymbol(0, name, owner);
-        if (owner.kind == PCK)
-            Assert.checkNull(classes.get(c.flatname), c);
-        c.completer = thisCompleter;
-        return c;
-    }
-
-    /** Create a new toplevel or member class symbol with given name
-     *  and owner and enter in `classes' unless already there.
-     */
-    public ClassSymbol enterClass(Name name, TypeSymbol owner) {
-        Name flatname = TypeSymbol.formFlatName(name, owner);
-        ClassSymbol c = classes.get(flatname);
-        if (c == null) {
-            c = defineClass(name, owner);
-            classes.put(flatname, c);
-        } else if ((c.name != name || c.owner != owner) && owner.kind == TYP && c.owner.kind == PCK) {
-            // reassign fields of classes that might have been loaded with
-            // their flat names.
-            c.owner.members().remove(c);
-            c.name = name;
-            c.owner = owner;
-            c.fullname = ClassSymbol.formFullName(name, owner);
-        }
-        return c;
-    }
-
-    /**
-     * Creates a new toplevel class symbol with given flat name and
-     * given class (or source) file.
-     *
-     * @param flatName a fully qualified binary class name
-     * @param classFile the class file or compilation unit defining
-     * the class (may be {@code null})
-     * @return a newly created class symbol
-     * @throws AssertionError if the class symbol already exists
-     */
-    public ClassSymbol enterClass(Name flatName, JavaFileObject classFile) {
-        ClassSymbol cs = classes.get(flatName);
-        if (cs != null) {
-            String msg = Log.format("%s: completer = %s; class file = %s; source file = %s",
-                                    cs.fullname,
-                                    cs.completer,
-                                    cs.classfile,
-                                    cs.sourcefile);
-            throw new AssertionError(msg);
-        }
-        Name packageName = Convert.packagePart(flatName);
-        PackageSymbol owner = packageName.isEmpty()
-                                ? syms.unnamedPackage
-                                : enterPackage(packageName);
-        cs = defineClass(Convert.shortName(flatName), owner);
-        cs.classfile = classFile;
-        classes.put(flatName, cs);
-        return cs;
-    }
-
-    /** Create a new member or toplevel class symbol with given flat name
-     *  and enter in `classes' unless already there.
-     */
-    public ClassSymbol enterClass(Name flatname) {
-        ClassSymbol c = classes.get(flatname);
-        if (c == null)
-            return enterClass(flatname, (JavaFileObject)null);
-        else
-            return c;
-    }
-
     /** Completion for classes to be loaded. Before a class is loaded
      *  we make sure its enclosing class (if any) is loaded.
      */
@@ -2465,7 +2449,7 @@ public class ClassReader {
             for (Name name : Convert.enclosingCandidates(Convert.shortName(c.name))) {
                 Symbol encl = owner.members().lookup(name).sym;
                 if (encl == null)
-                    encl = classes.get(TypeSymbol.formFlatName(name, owner));
+                    encl = syms.classes.get(TypeSymbol.formFlatName(name, owner));
                 if (encl != null)
                     encl.complete();
             }
@@ -2536,6 +2520,8 @@ public class ClassReader {
                 return;
             } catch (IOException ex) {
                 throw badClassFile("unable.to.access.file", ex.getMessage());
+            } catch (ArrayIndexOutOfBoundsException ex) {
+                throw badClassFile("bad.class.file", c.flatname);
             } finally {
                 currentClassFile = previousClassFile;
             }
@@ -2607,17 +2593,18 @@ public class ClassReader {
             cachedCompletionFailure.setStackTrace(new StackTraceElement[0]);
         }
 
+
     /** Load a toplevel class with given fully qualified name
      *  The class is entered into `classes' only if load was successful.
      */
     public ClassSymbol loadClass(Name flatname) throws CompletionFailure {
-        boolean absent = classes.get(flatname) == null;
-        ClassSymbol c = enterClass(flatname);
+        boolean absent = syms.classes.get(flatname) == null;
+        ClassSymbol c = syms.enterClass(flatname);
         if (c.members_field == null && c.completer != null) {
             try {
                 c.complete();
             } catch (CompletionFailure ex) {
-                if (absent) classes.remove(flatname);
+                if (absent) syms.classes.remove(flatname);
                 throw ex;
             }
         }
@@ -2627,33 +2614,6 @@ public class ClassReader {
 /************************************************************************
  * Loading Packages
  ***********************************************************************/
-
-    /** Check to see if a package exists, given its fully qualified name.
-     */
-    public boolean packageExists(Name fullname) {
-        return enterPackage(fullname).exists();
-    }
-
-    /** Make a package, given its fully qualified name.
-     */
-    public PackageSymbol enterPackage(Name fullname) {
-        PackageSymbol p = packages.get(fullname);
-        if (p == null) {
-            Assert.check(!fullname.isEmpty(), "rootPackage missing!");
-            p = new PackageSymbol(
-                Convert.shortName(fullname),
-                enterPackage(Convert.packagePart(fullname)));
-            p.completer = thisCompleter;
-            packages.put(fullname, p);
-        }
-        return p;
-    }
-
-    /** Make a package, given its unqualified name and enclosing package.
-     */
-    public PackageSymbol enterPackage(Name name, PackageSymbol owner) {
-        return enterPackage(TypeSymbol.formFullName(name, owner));
-    }
 
     /** Include class corresponding to given class file in package,
      *  unless (1) we already have one the same kind (.class or .java), or
@@ -2678,7 +2638,7 @@ public class ClassReader {
             ? p.package_info
             : (ClassSymbol) p.members_field.lookup(classname).sym;
         if (c == null) {
-            c = enterClass(classname, p);
+            c = syms.enterClass(classname, p);
             if (c.classfile == null) // only update the file if's it's newly created
                 c.classfile = file;
             if (isPkgInfo) {

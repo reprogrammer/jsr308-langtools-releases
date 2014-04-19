@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2013, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2014, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import javax.tools.JavaFileManager.Location;
@@ -136,9 +137,9 @@ public class JavadocTool extends com.sun.tools.javac.main.JavaCompiler {
         docenv.legacyDoclet = legacyDoclet;
         javadocReader.sourceCompleter = docClasses ? null : thisCompleter;
 
-        ListBuffer<String> names = new ListBuffer<String>();
-        ListBuffer<JCCompilationUnit> classTrees = new ListBuffer<JCCompilationUnit>();
-        ListBuffer<JCCompilationUnit> packTrees = new ListBuffer<JCCompilationUnit>();
+        ListBuffer<String> names = new ListBuffer<>();
+        ListBuffer<JCCompilationUnit> classTrees = new ListBuffer<>();
+        ListBuffer<JCCompilationUnit> packTrees = new ListBuffer<>();
 
         try {
             StandardJavaFileManager fm = docenv.fileManager instanceof StandardJavaFileManager
@@ -226,7 +227,7 @@ public class JavadocTool extends com.sun.tools.javac.main.JavaCompiler {
         if (files == null) {
             Location location = docenv.fileManager.hasLocation(StandardLocation.SOURCE_PATH)
                     ? StandardLocation.SOURCE_PATH : StandardLocation.CLASS_PATH;
-            ListBuffer<JavaFileObject> lb = new ListBuffer<JavaFileObject>();
+            ListBuffer<JavaFileObject> lb = new ListBuffer<>();
             for (JavaFileObject fo: docenv.fileManager.list(
                     location, name, EnumSet.of(JavaFileObject.Kind.SOURCE), false)) {
                 String binaryName = docenv.fileManager.inferBinaryName(location, fo);
@@ -238,10 +239,13 @@ public class JavadocTool extends com.sun.tools.javac.main.JavaCompiler {
             files = lb.toList();
         }
 
+        Set<JavaFileObject> ufiles = new HashSet<>();
         for (JavaFileObject fo : files) {
-            // messager.notice("main.Loading_source_file", fn);
-            trees.append(parse(fo));
-            hasFiles = true;
+            if (ufiles.add(fo)) { // ignore duplicates
+                // messager.notice("main.Loading_source_file", fn);
+                trees.append(parse(fo));
+                hasFiles = true;
+            }
         }
 
         if (!hasFiles) {
@@ -259,10 +263,9 @@ public class JavadocTool extends com.sun.tools.javac.main.JavaCompiler {
             ListBuffer<String> packages,
             List<String> excludedPackages)
             throws IOException {
-        Map<String,List<JavaFileObject>> packageFiles =
-                new HashMap<String,List<JavaFileObject>>();
+        Map<String,List<JavaFileObject>> packageFiles = new HashMap<>();
 
-        Map<String,Boolean> includedPackages = new HashMap<String,Boolean>();
+        Map<String,Boolean> includedPackages = new HashMap<>();
         includedPackages.put("", true);
         for (String p: excludedPackages)
             includedPackages.put(p, false);
@@ -427,7 +430,7 @@ public class JavadocTool extends com.sun.tools.javac.main.JavaCompiler {
      * From a list of top level trees, return the list of contained class definitions
      */
     List<JCClassDecl> listClasses(List<JCCompilationUnit> trees) {
-        ListBuffer<JCClassDecl> result = new ListBuffer<JCClassDecl>();
+        ListBuffer<JCClassDecl> result = new ListBuffer<>();
         for (JCCompilationUnit t : trees) {
             for (JCTree def : t.defs) {
                 if (def.hasTag(JCTree.Tag.CLASSDEF))

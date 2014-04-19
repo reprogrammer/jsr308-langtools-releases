@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -73,15 +73,11 @@ public class ConstructorDocImpl
     /**
      * Get the name.
      *
-     * @return the name of the member qualified by class (but not package)
+     * @return the name of the member.
      */
     public String name() {
         ClassSymbol c = sym.enclClass();
-        String n = c.name.toString();
-        for (c = c.owner.enclClass(); c != null; c = c.owner.enclClass()) {
-            n = c.name.toString() + "." + n;
-        }
-        return n;
+        return c.name.toString();
     }
 
     /**

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -75,6 +75,58 @@ public class Fields {
     })
     public String fieldAsArrayOld() {
         return "@TC String test @TA [] @TB [];";
+    }
+
+    @TADescriptions({
+        @TADescription(annotation = "TA", type = FIELD),
+        @TADescription(annotation = "TB", type = FIELD,
+                genericLocation = { 0, 0 }),
+        @TADescription(annotation = "TC", type = FIELD,
+                genericLocation = { 0, 0, 0, 0 }),
+        @TADescription(annotation = "TD", type = FIELD,
+                genericLocation = { 0, 0, 0, 0, 0, 0 })
+    })
+    public String fieldAsArray2() {
+        return "@TD String @TA [] @TB [] @TC [] test;";
+    }
+
+    @TADescriptions({
+        @TADescription(annotation = "TC", type = FIELD),
+        @TADescription(annotation = "TA", type = FIELD,
+                genericLocation = { 0, 0 }),
+        @TADescription(annotation = "TB", type = FIELD,
+                genericLocation = { 0, 0, 0, 0 }),
+        @TADescription(annotation = "TD", type = FIELD,
+                genericLocation = { 0, 0, 0, 0, 0, 0 })
+    })
+    public String fieldAsArray2aOld() {
+        return "@TD String @TA [] @TB [] test @TC [];";
+    }
+
+    @TADescriptions({
+        @TADescription(annotation = "TB", type = FIELD),
+        @TADescription(annotation = "TC", type = FIELD,
+                genericLocation = { 0, 0 }),
+        @TADescription(annotation = "TA", type = FIELD,
+                genericLocation = { 0, 0, 0, 0 }),
+        @TADescription(annotation = "TD", type = FIELD,
+                genericLocation = { 0, 0, 0, 0, 0, 0 })
+    })
+    public String fieldAsArray2bOld() {
+        return "@TD String @TA [] test @TB [] @TC [];";
+    }
+
+    @TADescriptions({
+        @TADescription(annotation = "TA", type = FIELD),
+        @TADescription(annotation = "TB", type = FIELD,
+                genericLocation = { 0, 0 }),
+        @TADescription(annotation = "TC", type = FIELD,
+                genericLocation = { 0, 0, 0, 0 }),
+        @TADescription(annotation = "TD", type = FIELD,
+                genericLocation = { 0, 0, 0, 0, 0, 0 })
+    })
+    public String fieldAsArray2cOld() {
+        return "@TD String test @TA [] @TB [] @TC [];";
     }
 
     @TADescriptions({})

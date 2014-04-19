@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2011, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -44,8 +44,7 @@ import java.util.Map;
  */
 public class JavacMessages implements Messages {
     /** The context key for the JavacMessages object. */
-    public static final Context.Key<JavacMessages> messagesKey =
-        new Context.Key<JavacMessages>();
+    public static final Context.Key<JavacMessages> messagesKey = new Context.Key<>();
 
     /** Get the JavacMessages instance for this context. */
     public static JavacMessages instance(Context context) {
@@ -93,7 +92,7 @@ public class JavacMessages implements Messages {
      */
     public JavacMessages(String bundleName, Locale locale) throws MissingResourceException {
         bundleNames = List.nil();
-        bundleCache = new HashMap<Locale, SoftReference<List<ResourceBundle>>>();
+        bundleCache = new HashMap<>();
         add(bundleName);
         setCurrentLocale(locale);
     }
@@ -124,7 +123,7 @@ public class JavacMessages implements Messages {
                     throw new InternalError("Cannot find javac resource bundle for locale " + locale);
                 }
             }
-            bundleCache.put(locale, new SoftReference<List<ResourceBundle>>(bundleList));
+            bundleCache.put(locale, new SoftReference<>(bundleList));
         }
         return bundleList;
     }
@@ -184,19 +183,19 @@ public class JavacMessages implements Messages {
                                              String key,
                                              Object... args) {
        String msg = null;
-        for (List<ResourceBundle> l = bundles; l.nonEmpty() && msg == null; l = l.tail) {
-            ResourceBundle rb = l.head;
-            try {
-                msg = rb.getString(key);
-            }
-            catch (MissingResourceException e) {
-                // ignore, try other bundles in list
-            }
-        }
-        if (msg == null) {
-            msg = "compiler message file broken: key=" + key +
-                " arguments={0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}";
-        }
-        return MessageFormat.format(msg, args);
+       for (List<ResourceBundle> l = bundles; l.nonEmpty() && msg == null; l = l.tail) {
+           ResourceBundle rb = l.head;
+           try {
+               msg = rb.getString(key);
+           }
+           catch (MissingResourceException e) {
+               // ignore, try other bundles in list
+           }
+       }
+       if (msg == null) {
+           msg = "compiler message file broken: key=" + key +
+               " arguments={0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}";
+       }
+       return MessageFormat.format(msg, args);
     }
 }

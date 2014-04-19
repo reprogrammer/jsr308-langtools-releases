@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -75,6 +75,58 @@ public class MethodReturns {
     })
     public String methodReturnAsArrayOld() {
         return "@TC String test() @TA [] @TB [] { return null; }";
+    }
+
+    @TADescriptions({
+        @TADescription(annotation = "TA", type = METHOD_RETURN),
+        @TADescription(annotation = "TB", type = METHOD_RETURN,
+                genericLocation = { 0, 0 }),
+        @TADescription(annotation = "TC", type = METHOD_RETURN,
+                genericLocation = { 0, 0, 0, 0 }),
+        @TADescription(annotation = "TD", type = METHOD_RETURN,
+                genericLocation = { 0, 0, 0, 0, 0, 0 })
+    })
+    public String methodReturnAsArray2() {
+        return "@TD String @TA [] @TB [] @TC [] test() { return null; }";
+    }
+
+    @TADescriptions({
+        @TADescription(annotation = "TC", type = METHOD_RETURN),
+        @TADescription(annotation = "TA", type = METHOD_RETURN,
+                genericLocation = { 0, 0 }),
+        @TADescription(annotation = "TB", type = METHOD_RETURN,
+                genericLocation = { 0, 0, 0, 0 }),
+        @TADescription(annotation = "TD", type = METHOD_RETURN,
+                genericLocation = { 0, 0, 0, 0, 0, 0 })
+    })
+    public String methodReturnAsArray2aOld() {
+        return "@TD String @TA [] @TB [] test() @TC [] { return null; } ";
+    }
+
+    @TADescriptions({
+        @TADescription(annotation = "TB", type = METHOD_RETURN),
+        @TADescription(annotation = "TC", type = METHOD_RETURN,
+                genericLocation = { 0, 0 }),
+        @TADescription(annotation = "TA", type = METHOD_RETURN,
+                genericLocation = { 0, 0, 0, 0 }),
+        @TADescription(annotation = "TD", type = METHOD_RETURN,
+                genericLocation = { 0, 0, 0, 0, 0, 0 })
+    })
+    public String methodReturnAsArray2bOld() {
+        return "@TD String @TA [] test() @TB [] @TC [] { return null; } ";
+    }
+
+    @TADescriptions({
+        @TADescription(annotation = "TA", type = METHOD_RETURN),
+        @TADescription(annotation = "TB", type = METHOD_RETURN,
+                genericLocation = { 0, 0 }),
+        @TADescription(annotation = "TC", type = METHOD_RETURN,
+                genericLocation = { 0, 0, 0, 0 }),
+        @TADescription(annotation = "TD", type = METHOD_RETURN,
+                genericLocation = { 0, 0, 0, 0, 0, 0 })
+    })
+    public String methodReturnAsArray2cOld() {
+        return "@TD String test() @TA [] @TB [] @TC [] { return null; } ";
     }
 
     @TADescriptions({})
